@@ -40,6 +40,10 @@ const reciterSelect = document.getElementById('reciterSelect');
 const qualitySelect = document.getElementById('qualitySelect');
 const templateSelect = document.getElementById('templateSelect');
 const formatSelect = document.getElementById('formatSelect');
+const personNameInput = document.getElementById('personName');
+const fontSelect = document.getElementById('fontSelect');
+
+
 
 const generateBtn = document.getElementById('generateBtn');
 const previewBtn = document.getElementById('previewBtn');
@@ -61,7 +65,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Check for existing progress
     pollProgress();
+
+    // Load available fonts
+    loadAvailableFonts();
 });
+
 
 function initSurahs() {
     SURAH_NAMES.forEach((name, index) => {
@@ -122,6 +130,33 @@ function initParticles() {
         container.appendChild(p);
     }
 }
+
+async function loadAvailableFonts() {
+    try {
+        const response = await fetch(`${API_BASE}/api/config`);
+        const data = await response.json();
+
+        if (data.availableFonts && data.availableFonts.length > 0) {
+            // Clear existing options
+            fontSelect.innerHTML = '<option value="random">عشوائي (تلقائي)</option>';
+
+            // Add fonts to dropdown
+            data.availableFonts.forEach(font => {
+                const option = document.createElement('option');
+                option.value = font;
+                option.textContent = font.replace(/\.(ttf|otf)$/i, '');
+                fontSelect.appendChild(option);
+            });
+
+            console.log('Loaded fonts:', data.availableFonts);
+        } else {
+            console.log('No fonts available');
+        }
+    } catch (error) {
+        console.error('Failed to load fonts:', error);
+    }
+}
+
 
 // --- Logic Functions ---
 let displayedLogs = 0;
@@ -188,7 +223,9 @@ generateBtn.addEventListener('click', async (e) => {
         endAyah: parseInt(endAyahInput.value),
         quality: qualitySelect.value,
         template: templateSelect.value,
-        format: formatSelect.value
+        personName: personNameInput.value,
+        format: formatSelect.value,
+        selectedFont: document.getElementById('fontSelect').value
     };
 
     if (payload.endAyah < payload.startAyah) {

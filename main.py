@@ -100,12 +100,19 @@ FONT_DIR = os.path.join(EXEC_DIR, "fonts")
 
 # Auto-detect available fonts
 def get_available_fonts():
-    """Get all .ttf fonts from the fonts directory"""
+    """Get all .ttf and .otf fonts from the fonts directory"""
     fonts = []
     if os.path.exists(FONT_DIR):
         for file in os.listdir(FONT_DIR):
-            if file.lower().endswith('.ttf'):
-                fonts.append(os.path.join(FONT_DIR, file))
+            if file.lower().endswith(('.ttf', '.otf')):
+                # Prioritize known good Arabic fonts
+                if any(arabic_font in file.lower() for arabic_font in [
+                    'dubai', 'lateef', 'scheherazade', 'reemkufi', 'sultan',
+                    'ghalam', 'ka books', 'hj yad', 'babalrayhan', 'al-rifai'
+                ]):
+                    fonts.insert(0, os.path.join(FONT_DIR, file))  # Add to front
+                else:
+                    fonts.append(os.path.join(FONT_DIR, file))
 
     # Fallback to default fonts if no fonts found
     if not fonts:
@@ -125,19 +132,85 @@ def get_available_fonts():
     logging.info(f"Using fonts: Primary={os.path.basename(FONT_PATH)}, Arabic={os.path.basename(FONT_PATH_ARABIC)}")
     return FONT_PATH, FONT_PATH_ARABIC, FONT_PATH_ENGLISH, fonts
 
-def get_random_font():
-    """Get a random font from available fonts"""
+def test_font_arabic_support(font_path):
+    """Test if a font can properly render Arabic text"""
     try:
-        fonts = []
+        from PIL import Image, ImageDraw, ImageFont
+        import arabic_reshaper
+
+        # Create a test image
+        img = Image.new('RGB', (200, 50), color='white')
+        draw = ImageDraw.Draw(img)
+
+        # Try to load the font
+        font = ImageFont.truetype(font_path, 20)
+
+        # Test Arabic text
+        test_text = "بسم الله"
+        reshaped_text = arabic_reshaper.reshape(test_text)
+
+        # Try to draw text
+        draw.text((10, 10), reshaped_text, font=font, fill='black')
+
+        return True
+    except Exception as e:
+        logging.warning(f"Font {os.path.basename(font_path)} failed Arabic test: {e}")
+        return False
+
+def get_specific_font(font_name):
+    """Get a specific font by name"""
+    try:
         if os.path.exists(FONT_DIR):
             for file in os.listdir(FONT_DIR):
-                if file.lower().endswith('.ttf'):
-                    fonts.append(os.path.join(FONT_DIR, file))
+                if file.lower().endswith(('.ttf', '.otf')):
+                    if file == font_name or os.path.splitext(file)[0] == font_name:
+                        font_path = os.path.join(FONT_DIR, file)
+                        logging.info(f"Selected specific font: {os.path.basename(font_path)}")
+                        return font_path
+        # Fallback to random if specific font not found
+        logging.warning(f"Font '{font_name}' not found, using random font")
+        return get_random_font()
+    except Exception as e:
+        logging.error(f"Error selecting specific font: {e}")
+        return get_random_font()
 
-        if fonts:
-            selected_font = random.choice(fonts)
+def get_random_font():
+    """Get a random font from available fonts, prioritizing Arabic fonts"""
+    try:
+        fonts = []
+        arabic_fonts = []
+        if os.path.exists(FONT_DIR):
+            for file in os.listdir(FONT_DIR):
+                if file.lower().endswith(('.ttf', '.otf')):
+                    font_path = os.path.join(FONT_DIR, file)
+                    fonts.append(font_path)
+
+                    # Identify Arabic fonts by name
+                    if any(arabic_font in file.lower() for arabic_font in [
+                        'dubai', 'lateef', 'scheherazade', 'reemkufi', 'sultan',
+                        'ghalam', 'ka books', 'hj yad', 'babalrayhan', 'al-rifai',
+                        'elgharib', 'alfont_com', 'omartype', 'qahiri', 'ranakufi'
+                    ]):
+                        arabic_fonts.append(font_path)
+
+        # Prefer Arabic fonts, use all fonts if no Arabic fonts found
+        font_pool = arabic_fonts if arabic_fonts else fonts
+
+        # Try up to 5 times to find a working font
+        for _ in range(min(5, len(font_pool))):
+            selected_font = random.choice(font_pool)
+
+            # Test the font (optional - can be disabled for performance)
+            # if test_font_arabic_support(selected_font):
             logging.info(f"Randomly selected font: {os.path.basename(selected_font)}")
             return selected_font
+            # else:
+            #     font_pool.remove(selected_font)
+
+        # If all tests failed, return first available font
+        if fonts:
+            logging.info(f"Using first available font: {os.path.basename(fonts[0])}")
+            return fonts[0]
         else:
             # Fallback to default
             return os.path.join(FONT_DIR, "DUBAI-BOLD.TTF")
@@ -212,11 +285,11 @@ from pydub import AudioSegment
 TARGET_W = 1080
 TARGET_H = 1920
 
-# Quality presets
+# Quality presets - Optimized for speed with balanced CPU usage
 QUALITY_PRESETS = {
-    'low': {'fps': 15, 'codec': 'libx264', 'preset': 'ultrafast', 'threads': 2},
-    'medium': {'fps': 24, 'codec': 'libx264', 'preset': 'fast', 'threads': 4},
-    'high': {'fps': 30, 'codec': 'libx264', 'preset': 'medium', 'threads': 6}
+    'low': {'fps': 15, 'codec': 'libx264', 'preset': 'ultrafast', 'threads': 4},
+    'medium': {'fps': 24, 'codec': 'libx264', 'preset': 'superfast', 'threads': 6},
+    'high': {'fps': 30, 'codec': 'libx264', 'preset': 'faster', 'threads': 8}
 }
 
 # Output formats
@@ -418,7 +491,7 @@ def wrap_text(text, per_line):
     lines = [' '.join(words[i:i + per_line]) for i in range(0, len(words), per_line)]
     return '\n'.join(lines)
 
-def create_text_clip(arabic, translation="", duration=5, template='normal', video_height=1080):
+def create_text_clip(arabic, translation="", duration=5, template='normal', video_height=1080, selected_font='random'):
     """
     Create enhanced text clip with Arabic and optional English translation.
     Includes professional visual effects and template support.
@@ -456,12 +529,15 @@ def create_text_clip(arabic, translation="", duration=5, template='normal', vide
     else:
         text_color = 'white'
 
-    # Use random font from available fonts for variety
-    selected_font = get_random_font()
+    # Use selected font or random font
+    if selected_font == 'random':
+        selected_font_path = get_random_font()
+    else:
+        selected_font_path = get_specific_font(selected_font)
 
     ar_clip = TextClip(
         wrapped_arabic,
-        font=selected_font,
+        font=selected_font_path,
         fontsize=fontsize,
         color=text_color,
         stroke_color='black',
@@ -541,7 +617,7 @@ def get_preprocessed_bg(bg_path, target_w=TARGET_W, target_h=TARGET_H):
 
 def process_single_ayah(args):
     """Process a single ayah for parallel processing"""
-    reciter_id, surah, ayah, idx, template, bg_style = args
+    reciter_id, surah, ayah, idx, template, bg_style, selected_font = args
 
     try:
         # Monitor resources
@@ -570,10 +646,11 @@ def process_single_ayah(args):
         seg_bg = prepare_bg_clip(pick_bg(bg_style), dur)
 
         # Create text with template (Arabic only)
-        ar_clip = create_text_clip(ar, "", dur, template)
+        ar_clip = create_text_clip(ar, "", dur, template, selected_font)
 
-        # Composite
+        # Composite with fade in/out for smooth transitions
         seg = CompositeVideoClip([seg_bg, ar_clip], size=(TARGET_W, TARGET_H)).set_audio(audio)
+        seg = seg.crossfadein(0.5).crossfadeout(0.5)
 
         logging.info(f"Completed ayah {surah}:{ayah}")
         return seg
@@ -598,7 +675,7 @@ def prepare_bg_clip(path, duration, target_w=TARGET_W, target_h=TARGET_H):
     logging.info(f"BG prepared size={bg.w}x{bg.h} target={target_w}x{target_h}")
     return bg
 
-def build_video(reciter_id, surah, start_ayah, end_ayah=None, quality='medium', format_type='reels', template='normal', person_name=''):
+def build_video(reciter_id, surah, start_ayah, end_ayah=None, quality='medium', format_type='reels', template='normal', person_name='', selected_font='random'):
     """
     Enhanced video builder with quality presets, templates, and parallel processing.
     """
@@ -644,7 +721,7 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None, quality='medium', 
         logging.info(f"Using {max_workers} parallel workers (CPU: {cpu}%, MEM: {mem}%)")
 
         # Prepare arguments for parallel processing
-        ayah_args = [(reciter_id, surah, ayah, idx, template, bg_style)
+        ayah_args = [(reciter_id, surah, ayah, idx, template, bg_style, selected_font)
                      for idx, ayah in enumerate(range(start_ayah, last_ayah + 1), start=1)]
 
         if max_workers > 1:
@@ -672,9 +749,10 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None, quality='medium', 
 
                 update_progress(int(base_progress + progress_per_ayah), f'تم معالجة الآية {idx}/{total}...')
 
-        add_log('[4] Concatenating segments...')
-        update_progress(85, 'جاري دمج المقاطع...')
-        final = concatenate_videoclips(clips, method='chain')
+        add_log('[4] Concatenating segments with transitions...')
+        update_progress(85, 'جاري دمج المقاطع مع الانتقالات...')
+        # Use 'compose' method for transitions with crossfade
+        final = concatenate_videoclips(clips, method='compose', padding=-0.5)
 
         # Generate filename with person name, date, and surah name
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -686,8 +764,8 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None, quality='medium', 
         # Clean person name for filename (remove special characters)
         clean_person_name = person_name.replace(" ", "_").replace("/", "_").replace("\\", "_") if person_name else "User"
 
-        # Create new filename format: PersonName_Date_SurahName_Ayahs_Quality_Template
-        filename = f"{clean_person_name}_{date_str}_{surah_name}_Ayah{start_ayah}-{end_ayah}_{quality}_{template}.mp4"
+        # Create new filename format: PersonName_SurahName_Ayahs_Quality_Template.mp4 (Removed Date as requested)
+        filename = f"{clean_person_name}_{surah_name}_Ayah{start_ayah}-{end_ayah}_{quality}_{template}.mp4"
         out = os.path.join(VIDEO_DIR, filename)
 
         add_log(f'[5] Writing final video -> {out}')
@@ -774,13 +852,14 @@ def generate_video():
     format_type = data.get('format', 'reels')
     template = data.get('template', 'normal')
     person_name = data.get('personName', '')  # New parameter for person's name
+    selected_font = data.get('selectedFont', 'random')  # New parameter for selected font
 
     reset_progress()
 
     # Start video generation in background thread with enhanced parameters
     thread = threading.Thread(
         target=build_video,
-        args=(reciter_id, surah, start_ayah, end_ayah, quality, format_type, template, person_name),
+        args=(reciter_id, surah, start_ayah, end_ayah, quality, format_type, template, person_name, selected_font),
         daemon=True
     )
     thread.start()
