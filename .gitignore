@@ -1,0 +1,166 @@
+# IDE and Editor files
+/.gemini
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Logs and runtime files
+runlog.txt
+*.log
+logs/
+
+# Output files and temporary data
+outputs/
+temp/
+tmp/
+*.tmp
+*.temp
+
+# Audio and video files (except samples)
+*.mp4
+*.mp3
+*.avi
+*.mov
+*.wav
+!samples/*.mp4
+!samples/*.mp3
+
+# Configuration files with sensitive data
+config.json
+settings.json
+.env
+.env.local
+.env.*.local
+
+# Cache and backup files
+.cache/
+*.cache
+*.bak
+*.backup
+bg_cache/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Binary executables
+*.exe
+*.msi
+*.dmg
+*.pkg
+bin/ffmpeg/
+bin/imagemagick/
+
+# Font files (if they're large/copyrighted)
+fonts/*.ttf
+fonts/*.otf
+fonts/*.woff
+fonts/*.woff2
+
+# Large media files
+*.zip
+*.rar
+*.7z
+*.tar.gz
+*.tgz
+
+# Node modules (if using any)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Test files
+test/
+tests/
+*.test.py
+*_test.py
+
+# Documentation build
+docs/_build/
+site/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# celery beat schedule file
+celerybeat-schedule
+
+# SageMath parsed files
+*.sage.py
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
