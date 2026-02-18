@@ -16,6 +16,9 @@ import time
 import psutil
 import concurrent.futures
 import shelve
+import hashlib
+import re
+
 from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 
@@ -98,6 +101,66 @@ BG_CACHE_DIR = os.path.join(OUT_DIR, "bg_cache")
 
 FONT_DIR = os.path.join(EXEC_DIR, "fonts")
 
+# Cache for fonts that have problematic filenames (non-ascii) or locations.
+# ImageMagick on Windows can fail to load such font paths.
+FONT_CACHE_DIR = os.path.join(FONT_DIR, "_cache")
+
+
+def _is_ascii(s):
+    try:
+        s.encode("ascii")
+        return True
+    except Exception:
+        return False
+
+
+def _safe_font_path_for_imagemagick(font_path):
+    """Return a font path that ImageMagick is more likely to read on Windows.
+
+    If the font path contains non-ASCII characters, copy it to an ASCII-only
+    cache filename under fonts/_cache and return the cached path.
+    """
+    try:
+        if not font_path:
+            return font_path
+
+        # MoviePy/TextClip passes this path down to ImageMagick.
+        # ImageMagick on Windows often fails for non-ascii paths.
+        if _is_ascii(font_path) and _is_ascii(os.path.basename(font_path)):
+            return font_path
+
+        os.makedirs(FONT_CACHE_DIR, exist_ok=True)
+        ext = os.path.splitext(font_path)[1].lower()
+        if ext not in [".ttf", ".otf"]:
+            ext = ".ttf"
+
+        digest = hashlib.md5(font_path.encode("utf-8", errors="ignore")).hexdigest()[:12]
+        cached_name = f"font_{digest}{ext}"
+        cached_path = os.path.join(FONT_CACHE_DIR, cached_name)
+
+        if not os.path.exists(cached_path):
+            shutil.copy2(font_path, cached_path)
+            logging.info(f"Cached font for ImageMagick: '{os.path.basename(font_path)}' -> '{cached_name}'")
+
+        # Ensure the file is not empty
+        if os.path.getsize(cached_path) == 0:
+            logging.error(f"Cached font file is empty! {cached_path}")
+            return font_path
+
+        return cached_path
+    except Exception as e:
+        logging.warning(f"Failed to create safe font cache path for '{font_path}': {e}")
+        return font_path
+
+
+def _normalize_font_request(font_name):
+    if not font_name:
+        return ""
+    # Normalize whitespace and quotes (users can paste weird strings)
+    font_name = str(font_name).strip().strip('"').strip("'")
+    font_name = re.sub(r"\s+", " ", font_name)
+    return font_name
+
 # Auto-detect available fonts
 def get_available_fonts():
     """Get all .ttf and .otf fonts from the fonts directory"""
@@ -107,8 +170,10 @@ def get_available_fonts():
             if file.lower().endswith(('.ttf', '.otf')):
                 # Prioritize known good Arabic fonts
                 if any(arabic_font in file.lower() for arabic_font in [
-                    'dubai', 'lateef', 'scheherazade', 'reemkufi', 'sultan',
-                    'ghalam', 'ka books', 'hj yad', 'babalrayhan', 'al-rifai'
+                    'amiri', 'tajawal', 'lateef', 'elmessiri', 'cairo', 'zain',
+                    'dubai', 'scheherazade', 'reemkufi', 'sultan',
+                    'ghalam', 'ka books', 'hj yad', 'babalrayhan', 'al-rifai',
+                    'elgharib', 'alfont_com'
                 ]):
                     fonts.insert(0, os.path.join(FONT_DIR, file))  # Add to front
                 else:
@@ -148,9 +213,10 @@ def test_font_arabic_support(font_path):
         # Test Arabic text
         test_text = "بسم الله"
         reshaped_text = arabic_reshaper.reshape(test_text)
+        bidi_text = get_display(reshaped_text)
 
         # Try to draw text
-        draw.text((10, 10), reshaped_text, font=font, fill='black')
+        draw.text((10, 10), bidi_text, font=font, fill='black')
 
         return True
     except Exception as e:
@@ -158,18 +224,52 @@ def test_font_arabic_support(font_path):
         return False
 
 def get_specific_font(font_name):
-    """Get a specific font by name"""
+    """Get a specific font by name - with better matching and clear confirmation"""
     try:
+        font_name = _normalize_font_request(font_name)
+        font_name_lower = font_name.lower()
+
+        logging.info(f"🔤 USER REQUESTED FONT: '{font_name}'")
+
         if os.path.exists(FONT_DIR):
-            for file in os.listdir(FONT_DIR):
-                if file.lower().endswith(('.ttf', '.otf')):
-                    if file == font_name or os.path.splitext(file)[0] == font_name:
-                        font_path = os.path.join(FONT_DIR, file)
-                        logging.info(f"Selected specific font: {os.path.basename(font_path)}")
-                        return font_path
-        # Fallback to random if specific font not found
-        logging.warning(f"Font '{font_name}' not found, using random font")
-        return get_random_font()
+            fonts_in_dir = [f for f in os.listdir(FONT_DIR) if f.lower().endswith(('.ttf', '.otf'))]
+
+            # Try exact match first
+            for file in fonts_in_dir:
+                if file == font_name or os.path.splitext(file)[0] == font_name:
+                    font_path = os.path.join(FONT_DIR, file)
+                    safe_path = _safe_font_path_for_imagemagick(font_path)
+                    logging.info(f"✅ EXACT MATCH: Using font '{file}' -> {os.path.basename(safe_path)}")
+                    return safe_path
+
+            # Try case-insensitive match
+            for file in fonts_in_dir:
+                file_lower = file.lower()
+                name_lower = os.path.splitext(file)[0].lower()
+                if file_lower == font_name_lower or name_lower == font_name_lower:
+                    font_path = os.path.join(FONT_DIR, file)
+                    safe_path = _safe_font_path_for_imagemagick(font_path)
+                    logging.info(f"✅ CASE-INSENSITIVE MATCH: Using font '{file}' -> {os.path.basename(safe_path)}")
+                    return safe_path
+
+            # Try partial match (user typed "Dubai" -> matches "DUBAI-BOLD.TTF")
+            for file in fonts_in_dir:
+                file_lower = file.lower()
+                if font_name_lower in file_lower or font_name_lower.replace(' ', '') in file_lower:
+                    font_path = os.path.join(FONT_DIR, file)
+                    safe_path = _safe_font_path_for_imagemagick(font_path)
+                    logging.info(f"✅ PARTIAL MATCH: '{font_name}' matched to '{file}' -> {os.path.basename(safe_path)}")
+                    return safe_path
+
+            # Log available fonts for debugging
+            logging.warning(f"❌ Font '{font_name}' not found in directory")
+            logging.info(f"📋 Available fonts: {fonts_in_dir[:10]}...")  # Show first 10
+
+        # Fallback to random
+        fallback = get_random_font()
+        logging.warning(f"⚠️  FALLBACK: Using random font instead of '{font_name}'")
+        return fallback
+
     except Exception as e:
         logging.error(f"Error selecting specific font: {e}")
         return get_random_font()
@@ -202,21 +302,23 @@ def get_random_font():
 
             # Test the font (optional - can be disabled for performance)
             # if test_font_arabic_support(selected_font):
-            logging.info(f"Randomly selected font: {os.path.basename(selected_font)}")
-            return selected_font
+            safe_path = _safe_font_path_for_imagemagick(selected_font)
+            logging.info(f"Randomly selected font: {os.path.basename(safe_path)}")
+            return safe_path
             # else:
             #     font_pool.remove(selected_font)
 
         # If all tests failed, return first available font
         if fonts:
-            logging.info(f"Using first available font: {os.path.basename(fonts[0])}")
-            return fonts[0]
+            safe_path = _safe_font_path_for_imagemagick(fonts[0])
+            logging.info(f"Using first available font: {os.path.basename(safe_path)}")
+            return safe_path
         else:
             # Fallback to default
-            return os.path.join(FONT_DIR, "DUBAI-BOLD.TTF")
+            return _safe_font_path_for_imagemagick(os.path.join(FONT_DIR, "DUBAI-BOLD.TTF"))
     except Exception as e:
         logging.error(f"Error selecting random font: {e}")
-        return os.path.join(FONT_DIR, "DUBAI-BOLD.TTF")
+        return _safe_font_path_for_imagemagick(os.path.join(FONT_DIR, "DUBAI-BOLD.TTF"))
 
 def refresh_fonts():
     """Refresh font list - call this when new fonts are added"""
@@ -279,17 +381,26 @@ if sys.version_info >= (3, 13):
         sys.modules['pyaudioop'] = audioop_patch
         logging.info("Applied Python 3.13 audioop compatibility patch")
 
+import numpy as np
 import requests as http_requests
 from pydub import AudioSegment
+import arabic_reshaper
+from bidi.algorithm import get_display
+from PIL import Image, ImageDraw, ImageFont
+
 
 TARGET_W = 1080
 TARGET_H = 1920
 
-# Quality presets - Optimized for speed with balanced CPU usage
+# Professional pipeline: Pillow -> PNG, FFmpeg overlay + concat (no TextClip, no heavy MoviePy)
+USE_FFMPEG_PIPELINE = True
+
+# Quality presets - 1080x1920 Reels/Shorts: 30fps, high bitrate for social
+num_cores = os.cpu_count() or 4
 QUALITY_PRESETS = {
-    'low': {'fps': 15, 'codec': 'libx264', 'preset': 'ultrafast', 'threads': 4},
-    'medium': {'fps': 24, 'codec': 'libx264', 'preset': 'superfast', 'threads': 6},
-    'high': {'fps': 30, 'codec': 'libx264', 'preset': 'faster', 'threads': 8}
+    'low': {'fps': 24, 'codec': 'libx264', 'preset': 'ultrafast', 'threads': num_cores, 'bitrate': '4M'},
+    'medium': {'fps': 30, 'codec': 'libx264', 'preset': 'fast', 'threads': num_cores, 'bitrate': '8M'},
+    'high': {'fps': 30, 'codec': 'libx264', 'preset': 'fast', 'threads': num_cores, 'bitrate': '12M'}
 }
 
 # Output formats
@@ -320,7 +431,7 @@ else:
 # Configure MoviePy with FFmpeg and ImageMagick
 logging.info("Importing moviepy.editor...")
 try:
-    from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip, concatenate_videoclips
+    from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, ImageClip, CompositeVideoClip, concatenate_videoclips
     import moviepy.video.fx.all as vfx
     logging.info("MoviePy imported successfully")
 except Exception as e:
@@ -407,7 +518,10 @@ def reset_progress():
 def add_log(message):
     current_progress['log'].append(message)
     logging.info(f"PROGRESS: {message}")
-    print(f'>>> {message}', flush=True)
+    try:
+        print(f'>>> {message}', flush=True)
+    except OSError:
+        pass
 
 def update_progress(percent, status):
     current_progress['percent'] = percent
@@ -459,12 +573,29 @@ def download_audio(reciter_id, surah, ayah, idx):
     return out
 
 def get_ayah_text(surah, ayah):
+    """Fetch complete ayah text from API with verification"""
     try:
+        # Use quran-uthmani for complete Quranic text including tashkeel
         resp = http_requests.get(f'https://api.alquran.cloud/v1/ayah/{surah}:{ayah}/quran-uthmani')
         resp.raise_for_status()
-        return resp.json()['data']['text']
+        data = resp.json()
+
+        # Extract text from response
+        text = data['data']['text']
+
+        # Remove BOM and normalize whitespace
+        text = text.replace('\ufeff', '').replace('\u200b', '').strip()
+
+        # Verify we got meaningful text
+        if not text or len(text) < 5:
+            logging.error(f"⚠️  Ayah {surah}:{ayah} returned too short text: '{text}'")
+            raise ValueError(f"Ayah text too short: {text}")
+
+        logging.info(f"✅ Fetched ayah {surah}:{ayah}: {len(text)} chars - '{text[:50]}...'")
+        return text
+
     except Exception as e:
-        logging.error(f"Failed to fetch ayah text: {e}")
+        logging.error(f"❌ Failed to fetch ayah {surah}:{ayah}: {e}")
         raise
 
 
@@ -486,10 +617,411 @@ def retry_on_failure(func, max_retries=3):
             time.sleep(wait_time)
 
 def wrap_text(text, per_line):
-    """Wrap text into multiple lines based on word count per line"""
+    """Wrap text into multiple lines based on word count per line - PRESERVES ALL WORDS"""
     words = text.split()
-    lines = [' '.join(words[i:i + per_line]) for i in range(0, len(words), per_line)]
-    return '\n'.join(lines)
+    total_words = len(words)
+
+    if total_words == 0:
+        return text
+
+    # Calculate number of lines needed
+    num_lines = (total_words + per_line - 1) // per_line  # Ceiling division
+
+    # Build lines ensuring ALL words are included
+    lines = []
+    for i in range(num_lines):
+        start_idx = i * per_line
+        end_idx = min(start_idx + per_line, total_words)
+        line_words = words[start_idx:end_idx]
+        lines.append(' '.join(line_words))
+
+    result = '\n'.join(lines)
+
+    # Verify all words are preserved
+    result_word_count = len(result.replace('\n', ' ').split())
+    if result_word_count != total_words:
+        logging.error(f"⚠️  WORD LOSS DETECTED: {total_words} -> {result_word_count} words")
+        # Fallback: return original text as single line
+        return text
+
+    logging.info(f"✅ Text wrapped: {total_words} words -> {len(lines)} lines ({per_line} words/line)")
+    return result
+
+
+def get_audio_duration_ffprobe(audio_path):
+    """Get duration in seconds using ffprobe (no MoviePy)."""
+    if not FFMPEG_EXE:
+        raise RuntimeError("FFmpeg not available")
+    ffprobe_exe = "ffprobe.exe" if os.name == "nt" else "ffprobe"
+    ffprobe = os.path.join(os.path.dirname(FFMPEG_EXE), ffprobe_exe)
+    if not os.path.isfile(ffprobe):
+        ffprobe = shutil.which("ffprobe") or FFMPEG_EXE
+    cmd = [
+        ffprobe, "-v", "error", "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1", audio_path
+    ]
+    out = subprocess.run(cmd, capture_output=True, text=True, timeout=10, check=True)
+    return float(out.stdout.strip())
+
+
+def _pil_color_to_rgba(color_str):
+    """Convert hex color string to RGBA tuple for PIL."""
+    s = color_str.strip()
+    if s.startswith('#'):
+        s = s[1:]
+    if len(s) == 6:
+        return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16), 255)
+    return (255, 255, 255, 255)
+
+
+def render_arabic_text_to_image(arabic_text, font_path, fontsize, color='white', stroke_color='black', stroke_width=2,
+                                width=None, per_line=4):
+    """
+    Render Arabic text (UTF-8) to an RGBA image using PIL.
+    CRITICAL: Forces working font to avoid square boxes.
+    """
+    if width is None:
+        width = TARGET_W - 160
+
+    # CRITICAL: Get complete original text
+    original_text = str(arabic_text).replace('\ufeff', '').strip() if arabic_text else " "
+
+    logging.info(f"🔤 INPUT TEXT: '{original_text}' ({len(original_text)} chars)")
+
+    # FORCE a working Arabic font, but pick the *real* filename present in ./fonts (case-insensitive)
+    forced_font = None
+    try:
+        candidates = []
+        if os.path.isdir(FONT_DIR):
+            candidates = [f for f in os.listdir(FONT_DIR) if f.lower().endswith(('.ttf', '.otf'))]
+
+        def _pick_font(preferred_names):
+            for pref in preferred_names:
+                for f in candidates:
+                    if f.lower() == pref.lower():
+                        return os.path.join(FONT_DIR, f)
+            return None
+
+        # Prefer Dubai (as you have it): Dubai-Bold.ttf
+        forced_font = _pick_font(["Dubai-Bold.ttf", "Dubai-Regular.ttf"]) or _pick_font(["DUBAI-BOLD.TTF", "DUBAI-REGULAR.TTF"])
+
+        # If Dubai not found, prefer a known Arabic-capable font
+        if not forced_font:
+            forced_font = _pick_font(["Amiri-Bold.ttf", "Amiri-Regular.ttf", "Lateef-Bold.ttf", "Lateef-Medium.ttf", "Lateef-Light.ttf", "ElMessiri-Bold.ttf", "ElMessiri-Regular.ttf", "Tajawal-Bold.ttf", "Tajawal-Regular.ttf", "Zain-Bold.ttf", "Zain-Regular.ttf"])
+
+        # Last resort: any font in folder
+        if not forced_font and candidates:
+            forced_font = os.path.join(FONT_DIR, candidates[0])
+
+    except Exception as e:
+        logging.error(f"❌ Font selection failed: {e}")
+        forced_font = None
+
+    try:
+        if forced_font and os.path.exists(forced_font):
+            font = ImageFont.truetype(forced_font, fontsize)
+            logging.info(f"✅ USING FONT: {os.path.basename(forced_font)} at {fontsize}px")
+        else:
+            raise FileNotFoundError(f"No usable font found in {FONT_DIR}")
+    except Exception as e:
+        logging.error(f"❌ Font load failed: {e}, trying all Arabic fonts...")
+        # CRITICAL: Never use default font for Arabic - it doesn't support Arabic glyphs!
+        # Try every available Arabic font as fallback
+        arabic_font_names = ["Dubai-Bold.ttf", "Dubai-Regular.ttf", "Amiri-Bold.ttf",
+                             "Amiri-Regular.ttf", "Lateef-Bold.ttf", "Lateef-Medium.ttf",
+                             "ElMessiri-Bold.ttf", "ElMessiri-Regular.ttf", "Tajawal-Bold.ttf",
+                             "Tajawal-Regular.ttf", "Zain-Bold.ttf", "Zain-Regular.ttf"]
+        font_loaded = False
+        for fallback_font in arabic_font_names:
+            fallback_path = os.path.join(FONT_DIR, fallback_font)
+            if os.path.exists(fallback_path):
+                try:
+                    font = ImageFont.truetype(fallback_path, fontsize)
+                    logging.info(f"✅ FALLBACK FONT LOADED: {fallback_font}")
+                    font_loaded = True
+                    break
+                except Exception as e2:
+                    logging.warning(f"⚠️ Fallback font {fallback_font} failed: {e2}")
+                    continue
+
+        if not font_loaded:
+            # Last resort: try any .ttf file in fonts folder
+            candidates = [f for f in os.listdir(FONT_DIR) if f.lower().endswith(('.ttf', '.otf'))]
+            for any_font in candidates:
+                try:
+                    font = ImageFont.truetype(os.path.join(FONT_DIR, any_font), fontsize)
+                    logging.info(f"✅ LAST RESORT FONT: {any_font}")
+                    font_loaded = True
+                    break
+                except:
+                    continue
+
+        if not font_loaded:
+            raise RuntimeError(f"CRITICAL: No Arabic font could be loaded from {FONT_DIR}. Please install Arabic fonts.")
+
+    # Process text:
+    # CRITICAL FIX: Apply reshape + bidi to FULL TEXT first, then wrap into lines.
+    # This preserves tashkeel (diacritics) and contextual letter forms.
+    try:
+        # Step 1: Clean the text
+        cleaned_text = original_text.replace('\ufeff', '').replace('\u200b', '').strip()
+
+        # Step 2: Apply Arabic reshaping to the ENTIRE text (preserves contextual forms)
+        reshaped_text = arabic_reshaper.reshape(cleaned_text)
+
+        # Step 3: Apply BiDi algorithm to get correct visual order (RTL)
+        visual_text = get_display(reshaped_text)
+
+        logging.info(f"🔤 TEXT PROCESSING: Original='{cleaned_text[:50]}...'")
+        logging.info(f"🔤 TEXT PROCESSING: Reshaped='{reshaped_text[:50]}...'")
+        logging.info(f"🔤 TEXT PROCESSING: Visual='{visual_text[:50]}...'")
+
+        # Step 4: Wrap into lines based on word count (working on visual text)
+        words = visual_text.split()
+        total_words = len(words)
+        logging.info(f"� TOTAL WORDS: {total_words}, per_line={per_line}")
+
+        visual_lines = []
+        for i in range(0, total_words, per_line):
+            line_words = words[i:i + per_line]
+            # Join words back with spaces for each line
+            line = ' '.join(line_words)
+            visual_lines.append(line)
+            logging.info(f"  📄 Line {len(visual_lines)}: '{line[:50]}...'")
+
+        wrapped = '\n'.join(visual_lines) if visual_lines else visual_text
+
+    except Exception as e:
+        logging.error(f"❌ Text processing failed: {e}")
+        # Fallback: use original text
+        wrapped = original_text
+
+    logging.info(f"📝 FINAL TEXT: '{wrapped[:100]}...' ({len(wrapped)} chars)")
+
+    fill_rgba = _pil_color_to_rgba(color if isinstance(color, str) and color.startswith('#') else '#FFFFFF')
+    stroke_rgba = _pil_color_to_rgba(stroke_color if isinstance(stroke_color, str) and stroke_color.startswith('#') else '#000000')
+
+    lines = wrapped.split('\n')
+    line_height = int(fontsize * 1.5)  # Increased spacing
+    padding = 50  # More padding
+    img_height = max(300, len(lines) * line_height + 2 * padding)
+    img = Image.new('RGBA', (width + 2 * padding, img_height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    y = padding + line_height // 2
+    for line in lines:
+        if not line.strip():
+            y += line_height
+            continue
+        x_center = (width + 2 * padding) // 2
+
+        # Draw stroke/outline first
+        if stroke_width > 0:
+            for dx in range(-stroke_width, stroke_width + 1):
+                for dy in range(-stroke_width, stroke_width + 1):
+                    if dx != 0 or dy != 0:
+                        draw.text((x_center + dx, y + dy), line, font=font, fill=stroke_rgba, anchor='mm')
+
+        # Draw main text
+        draw.text((x_center, y), line, font=font, fill=fill_rgba, anchor='mm')
+        y += line_height
+
+    logging.info(f"✅ IMAGE RENDERED: {img.size[0]}x{img.size[1]}px, {len(lines)} lines")
+    return np.array(img)
+
+
+def render_arabic_to_png(arabic, template, selected_font, output_png_path):
+    """
+    Render Arabic text (UTF-8 + bidi + reshaper) to PNG with Pillow. Stable font, no ImageMagick.
+    Saves to output_png_path (RGBA). For use with FFmpeg overlay.
+    """
+    template_config = TEMPLATES.get(template, TEMPLATES['normal'])
+    words = arabic.split()
+    word_count = len(words)
+    size_mult = template_config['font_size_mult']
+    if word_count > 60:
+        fontsize = int(50 * size_mult)
+        per_line = 7
+    elif word_count > 40:
+        fontsize = int(60 * size_mult)
+        per_line = 6
+    elif word_count > 25:
+        fontsize = int(70 * size_mult)
+        per_line = 5
+    elif word_count > 15:
+        fontsize = int(80 * size_mult)
+        per_line = 4
+    else:
+        fontsize = int(95 * size_mult)
+        per_line = 3
+    color = template_config['text_color']
+    text_color = '#FFD700' if color == 'gold' else ('#00FFFF' if color == 'bright' else 'white')
+    if selected_font == 'random':
+        font_path = get_random_font()
+    else:
+        font_path = get_specific_font(selected_font)
+
+    # DEBUG: Confirm which font is being used
+    logging.info(f"🎨 RENDER_ARABIC_TO_PNG: selected_font='{selected_font}' -> using font='{os.path.basename(font_path)}'")
+
+    font_path = _safe_font_path_for_imagemagick(font_path)
+    if not os.path.isabs(font_path):
+        font_path = os.path.abspath(font_path)
+    im_array = render_arabic_text_to_image(
+        arabic, font_path, fontsize, color=text_color, stroke_color='black', stroke_width=2,
+        width=TARGET_W - 160, per_line=per_line
+    )
+    os.makedirs(os.path.dirname(output_png_path) or ".", exist_ok=True)
+    Image.fromarray(im_array).save(output_png_path)
+    logging.info(f"Text rendered to PNG: {output_png_path}")
+    return output_png_path
+
+
+def build_segment_ffmpeg(bg_paths, text_png_path, audio_path, duration_sec, output_path, target_w=TARGET_W, target_h=TARGET_H):
+    """
+    Build one segment with FFmpeg only: BG (loop/concat) + overlay text PNG + audio.
+    CRITICAL: Added file existence checks and better error handling.
+    """
+    if not FFMPEG_EXE:
+        raise RuntimeError("FFmpeg not available")
+
+    # CRITICAL: Check if text PNG exists
+    if not os.path.exists(text_png_path):
+        logging.error(f"❌ Text PNG not found: {text_png_path}")
+        raise FileNotFoundError(f"Text PNG missing: {text_png_path}")
+
+    logging.info(f"✅ Text PNG exists: {text_png_path} ({os.path.getsize(text_png_path)} bytes)")
+
+    # Preprocess BG paths
+    preprocessed = []
+    for p in (bg_paths if isinstance(bg_paths, (list, tuple)) else [bg_paths]):
+        preprocessed.append(get_preprocessed_bg(p, target_w=target_w, target_h=target_h))
+
+    # Verify BG files exist
+    for p in preprocessed:
+        if not os.path.exists(p):
+            logging.error(f"❌ BG video not found: {p}")
+            raise FileNotFoundError(f"Background video missing: {p}")
+        logging.info(f"✅ BG video exists: {p}")
+
+    n = len(preprocessed)
+    part_dur = duration_sec / n
+
+    logging.info(f"📊 Building segment: {n} BG videos, duration={duration_sec}s, part_dur={part_dur}s")
+
+    # Common FFmpeg options - use veryfast instead of ultrafast for stability
+    common_args = ["-y", "-hide_banner", "-loglevel", "warning"]
+
+    # Build Input list and Filter
+    inputs = []
+    for p in preprocessed:
+        # Use -stream_loop to loop video backgrounds
+        inputs.extend(["-stream_loop", "-1", "-i", p])
+
+    # CRITICAL: -loop 1 for image input to keep it visible!
+    inputs.extend(["-loop", "1", "-i", text_png_path])
+    inputs.extend(["-i", audio_path])
+
+    if n == 1:
+        # One BG: Loop BG, Trim, Overlay text
+        filt = f"[0:v]trim=duration={duration_sec},setpts=PTS-STARTPTS[bg];[bg][1:v]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2:format=auto[v]"
+        map_args = ["-map", "[v]", "-map", "2:a"]
+    else:
+        # Multiple BGs: Loop/Trim each, Concat, Overlay text
+        v_parts = ""
+        for i in range(n):
+            v_parts += f"[{i}:v]trim=duration={part_dur},setpts=PTS-STARTPTS[v{i}];"
+        v_parts += "".join([f"[v{i}]" for i in range(n)]) + f"concat=n={n}:v=1:a=0[bg];"
+        filt = v_parts + f"[bg][{n}:v]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2:format=auto[v]"
+        map_args = ["-map", "[v]", "-map", f"{n+1}:a"]
+
+    cmd = [FFMPEG_EXE] + common_args + inputs + [
+        "-filter_complex", filt,
+    ] + map_args + [
+        "-t", str(duration_sec),
+        "-r", "30",
+        "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "192k",
+        "-shortest",  # CRITICAL: Stop when shortest input ends
+        output_path
+    ]
+
+    # Log the command for debugging
+    cmd_str = ' '.join(f'"{arg}"' if ' ' in arg else arg for arg in cmd)
+    logging.info(f"🎬 FFmpeg command: {cmd_str[:200]}...")
+
+    try:
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=300)
+        logging.info(f"✅ FFmpeg segment created: {output_path}")
+    except subprocess.CalledProcessError as e:
+        logging.error(f"❌ FFmpeg error (exit {e.returncode}):")
+        logging.error(f"   stderr: {e.stderr}")
+        logging.error(f"   stdout: {e.stdout}")
+        raise RuntimeError(f"FFmpeg failed with exit code {e.returncode}: {e.stderr}")
+    except Exception as e:
+        logging.error(f"❌ Unexpected FFmpeg error: {e}")
+        raise
+
+    # Verify output was created
+    if not os.path.exists(output_path):
+        raise RuntimeError(f"FFmpeg output not created: {output_path}")
+
+    return output_path
+
+
+def create_text_clip_pil(arabic, translation="", duration=5, template='normal', video_height=1080, selected_font='random'):
+    """
+    Create text clip using PIL-rendered image (no ImageMagick). Guarantees font on Windows.
+    """
+    template_config = TEMPLATES.get(template, TEMPLATES['normal'])
+    words = arabic.split()
+    word_count = len(words)
+    size_mult = template_config['font_size_mult']
+    if word_count > 60:
+        fontsize = int(50 * size_mult)
+        per_line = 7
+    elif word_count > 40:
+        fontsize = int(60 * size_mult)
+        per_line = 6
+    elif word_count > 25:
+        fontsize = int(70 * size_mult)
+        per_line = 5
+    elif word_count > 15:
+        fontsize = int(80 * size_mult)
+        per_line = 4
+    else:
+        fontsize = int(95 * size_mult)
+        per_line = 3
+
+    color = template_config['text_color']
+    if color == 'gold':
+        text_color = '#FFD700'
+    elif color == 'bright':
+        text_color = '#00FFFF'
+    else:
+        text_color = 'white'
+
+    if selected_font == 'random':
+        font_path = get_random_font()
+    else:
+        font_path = get_specific_font(selected_font)
+    font_path = _safe_font_path_for_imagemagick(font_path)
+    if not os.path.isabs(font_path):
+        font_path = os.path.abspath(font_path)
+
+    try:
+        im_array = render_arabic_text_to_image(
+            arabic, font_path, fontsize, color=text_color, stroke_color='black', stroke_width=2,
+            width=TARGET_W - 160, per_line=per_line
+        )
+        ar_clip = ImageClip(im_array).set_duration(duration).set_position('center')
+        ar_clip = ar_clip.fadein(0.3).fadeout(0.3)
+        logging.info(f"✅ PIL text clip created successfully: {im_array.shape[1]}x{im_array.shape[0]}, font={os.path.basename(font_path)}")
+        return ar_clip
+    except Exception as e:
+        logging.exception(f"❌ PIL text clip failed with font {font_path}: {e}")
+        raise
+
 
 def create_text_clip(arabic, translation="", duration=5, template='normal', video_height=1080, selected_font='random'):
     """
@@ -500,25 +1032,46 @@ def create_text_clip(arabic, translation="", duration=5, template='normal', vide
     words = arabic.split()
     word_count = len(words)
 
-    # Dynamic settings based on text length and template
+    # Dynamic settings based on text length and template - Optimized for readability
     size_mult = template_config['font_size_mult']
     if word_count > 60:
-        fontsize = int(45 * size_mult)
+        fontsize = int(50 * size_mult)
         per_line = 7
     elif word_count > 40:
-        fontsize = int(55 * size_mult)
+        fontsize = int(60 * size_mult)
         per_line = 6
     elif word_count > 25:
-        fontsize = int(65 * size_mult)
+        fontsize = int(70 * size_mult)
         per_line = 5
     elif word_count > 15:
-        fontsize = int(75 * size_mult)
+        fontsize = int(80 * size_mult)
         per_line = 4
     else:
-        fontsize = int(90 * size_mult)
+        fontsize = int(95 * size_mult)
         per_line = 3
 
-    wrapped_arabic = wrap_text(arabic, per_line)
+    # Reshape Arabic text and handle BiDi for correct rendering in MoviePy
+    try:
+        if not arabic or not arabic.strip():
+            logging.warning("Arabic text is empty, using placeholder")
+            arabic = " "
+
+        # Remove any lingering BOM or control chars
+        arabic = arabic.replace('\ufeff', '').strip()
+
+        # Reshape Arabic text and handle BiDi for correct rendering in MoviePy
+        reshaped_text = arabic_reshaper.reshape(arabic)
+        bidi_text = get_display(reshaped_text)
+
+        # Wrap corrected text
+        wrapped_arabic = wrap_text(bidi_text, per_line)
+        logging.info(f"Text processing: Original='{arabic[:30]}...' Reshaped='{reshaped_text[:30]}...' BIDI='{bidi_text[:30]}...'")
+
+    except Exception as e:
+        logging.error(f"Arabic text processing failed: {e}")
+        wrapped_arabic = arabic
+
+
 
     # Create Arabic text with enhanced styling
     color = template_config['text_color']
@@ -531,21 +1084,76 @@ def create_text_clip(arabic, translation="", duration=5, template='normal', vide
 
     # Use selected font or random font
     if selected_font == 'random':
-        selected_font_path = get_random_font()
+        requested_font_path = get_random_font()
     else:
-        selected_font_path = get_specific_font(selected_font)
+        requested_font_path = get_specific_font(selected_font)
 
-    ar_clip = TextClip(
-        wrapped_arabic,
-        font=selected_font_path,
-        fontsize=fontsize,
-        color=text_color,
-        stroke_color='black',
-        stroke_width=2,
-        method='caption',
-        size=(TARGET_W - 100, None),
-        align='center',
-    ).set_duration(duration).set_position('center')
+    # Always go through the safe-path helper (handles non-ascii filenames)
+    requested_font_path = _safe_font_path_for_imagemagick(requested_font_path)
+
+    # Ensure absolute path with normalized separators for ImageMagick
+    requested_font_path = os.path.abspath(requested_font_path).replace("\\", "/")
+
+    # Try creating text clip with fallbacks (fonts can be invalid or unreadable by ImageMagick)
+    # We use a mix of the requested font and very safe defaults.
+    fallback_fonts = [
+        requested_font_path,
+        # Fallback 1: Random font from the directory (might also be problematic, so we wrap it)
+        os.path.abspath(_safe_font_path_for_imagemagick(get_random_font())).replace("\\", "/"),
+        # Fallback 2: Known safe font (Dubai-Bold or similar if it exists)
+        os.path.abspath(_safe_font_path_for_imagemagick(os.path.join(FONT_DIR, "DUBAI-BOLD.TTF"))).replace("\\", "/"),
+        # Fallback 3: ImageMagick default (empty font string often uses a system font)
+        "Arial"
+    ]
+
+    last_error = None
+    ar_clip = None
+    for i, font_path in enumerate(fallback_fonts):
+        try:
+            logging.info(f"[{i+1}/4] Rendering Text (Fast Mode): {font_path}")
+
+            # Single TextClip with better stroke to avoid the overhead of heavy shadows
+            ar_clip = TextClip(
+                wrapped_arabic,
+                font=font_path,
+                fontsize=fontsize,
+                color=text_color,
+                stroke_color='black',
+                stroke_width=2.0, # Thicker stroke instead of shadow for 2x speedup
+                method='caption',
+                size=(TARGET_W - 160, None),
+                align='center',
+            ).set_duration(duration).set_position('center')
+
+            if ar_clip.w == 0 or ar_clip.h == 0:
+                logging.warning(f"Created clip size is 0x0 with font {font_path}")
+                continue
+
+            logging.info(f"TextClip created! Size: {ar_clip.w}x{ar_clip.h}")
+            last_error = None
+            break
+
+
+        except Exception as e:
+            last_error = e
+            logging.warning(f"TextClip failed with font '{font_path}': {e}")
+            continue
+
+    if ar_clip is None:
+        # Final emergency fallback: use a very simple TextClip
+        try:
+            logging.error("CRITICAL: All fonts failed, using emergency system font")
+            ar_clip = TextClip(
+                wrapped_arabic,
+                fontsize=fontsize,
+                color='white',
+                method='caption',
+                size=(TARGET_W - 160, None),
+                align='center'
+            ).set_duration(duration).set_position('center')
+        except:
+            raise Exception(f"All font attempts failed. Last error: {last_error}")
+
 
     # Add professional fade effects
     ar_clip = ar_clip.fadein(0.3).fadeout(0.3)
@@ -553,7 +1161,7 @@ def create_text_clip(arabic, translation="", duration=5, template='normal', vide
     return ar_clip
 
 
-def pick_bg(style='nature'):
+def pick_bg(style='nature', count=1):
     try:
         # Support multiple background styles
         bg_patterns = {
@@ -577,10 +1185,17 @@ def pick_bg(style='nature'):
             logging.error("No background videos found in vision folder!")
             raise ValueError("No background videos found.")
 
-        selected = random.choice(files)
-        logging.info(f"Selected background: {selected}")
-        return os.path.join(VISION_DIR, selected)
+        if count == 1:
+            selected = random.choice(files)
+            logging.info(f"Selected background: {selected}")
+            return os.path.join(VISION_DIR, selected)
+        else:
+            # Pick multiple unique BGs if possible
+            selected_files = random.sample(files, min(count, len(files)))
+            logging.info(f"Selected {len(selected_files)} background(s) for mashup: {selected_files}")
+            return [os.path.join(VISION_DIR, f) for f in selected_files]
     except Exception as e:
+
         logging.error(f"Error picking background: {e}")
         raise
 
@@ -602,8 +1217,8 @@ def get_preprocessed_bg(bg_path, target_w=TARGET_W, target_h=TARGET_H):
         "-vf", vf,
         "-an",
         "-c:v", "libx264",
-        "-preset", "veryfast",
-        "-crf", "23"
+        "-preset", "ultrafast", # Max speed for preprocessing
+        "-crf", "32"            # Lower quality for BG is fine
     ]
 
     # Only add movflags on non-Windows systems to avoid path issues
@@ -642,28 +1257,104 @@ def process_single_ayah(args):
         dur = audio.duration
         audio = audio.audio_fadein(0.2).audio_fadeout(0.2)
 
-        # Create background
-        seg_bg = prepare_bg_clip(pick_bg(bg_style), dur)
+        # Create background (Mashup 2 videos per ayah for variety)
+        bg_paths = pick_bg(bg_style, count=2)
+        seg_bg = prepare_bg_clip(bg_paths, dur)
 
-        # Create text with template (Arabic only)
-        ar_clip = create_text_clip(ar, "", dur, template, selected_font)
+        # Create text with template (Arabic only) - PIL path guarantees font on Windows
+        ar_clip = create_text_clip_pil(ar, "", dur, template, TARGET_H, selected_font)
+
 
         # Composite with fade in/out for smooth transitions
         seg = CompositeVideoClip([seg_bg, ar_clip], size=(TARGET_W, TARGET_H)).set_audio(audio)
         seg = seg.crossfadein(0.5).crossfadeout(0.5)
 
-        logging.info(f"Completed ayah {surah}:{ayah}")
+        # CRITICAL: Store ayah number for proper sorting
+        seg.ayah_number = ayah
+
+        logging.info(f"Completed ayah {surah}:{ayah} (segment #{idx})")
         return seg
 
     except Exception as e:
         logging.error(f"Error processing ayah {surah}:{ayah}: {e}")
         raise
 
-def prepare_bg_clip(path, duration, target_w=TARGET_W, target_h=TARGET_H):
-    path = get_preprocessed_bg(path, target_w=target_w, target_h=target_h)
-    bg = VideoFileClip(path, audio=False)
-    logging.info(f"BG source: {path} size={bg.w}x{bg.h}")
-    bg = bg.fx(vfx.loop, duration=duration).subclip(0, duration)
+
+def process_single_ayah_ffmpeg(args):
+    """
+    Process one ayah using FFmpeg only: Pillow -> PNG, FFmpeg overlay + audio.
+    Returns (ayah_number, segment_path). No MoviePy clip; low CPU, stable fonts.
+    """
+    reciter_id, surah, ayah, idx, template, bg_style, selected_font = args
+    try:
+        logging.info(f"🎬 Starting FFmpeg pipeline for ayah {surah}:{ayah} (idx={idx})")
+
+        def download():
+            return download_audio(reciter_id, surah, ayah, idx)
+        ap = retry_on_failure(download)
+        logging.info(f"✅ Audio downloaded: {ap}")
+
+        dur = get_audio_duration_ffprobe(ap)
+        logging.info(f"📊 Audio duration: {dur}s")
+
+        ar = retry_on_failure(lambda: get_ayah_text(surah, ayah))
+        logging.info(f"✅ Ayah text fetched: {ar[:50]}...")
+
+        bg_paths = pick_bg(bg_style, count=2)
+        logging.info(f"✅ Backgrounds selected: {bg_paths}")
+
+        os.makedirs(AUDIO_DIR, exist_ok=True)
+        text_png = os.path.join(AUDIO_DIR, f"text_{idx:03d}.png")
+        segment_out = os.path.join(AUDIO_DIR, f"segment_{idx:03d}.mp4")
+
+        # CRITICAL: Create text PNG and verify it exists
+        logging.info(f"🎨 Rendering text PNG: {text_png}")
+        render_arabic_to_png(ar, template, selected_font, text_png)
+
+        # Verify PNG was created and has content
+        if not os.path.exists(text_png):
+            raise RuntimeError(f"Text PNG not created: {text_png}")
+
+        png_size = os.path.getsize(text_png)
+        if png_size < 1000:
+            raise RuntimeError(f"Text PNG too small ({png_size} bytes), likely empty")
+
+        logging.info(f"✅ Text PNG created: {text_png} ({png_size} bytes)")
+
+        # Now build the video segment
+        logging.info(f"🎬 Building segment: {segment_out}")
+        build_segment_ffmpeg(bg_paths, text_png, ap, dur, segment_out)
+
+        logging.info(f"✅ FFmpeg segment done ayah {surah}:{ayah} -> {segment_out}")
+        return (ayah, segment_out)
+    except Exception as e:
+        logging.error(f"❌ Error processing ayah {surah}:{ayah} (FFmpeg): {e}")
+        raise
+
+
+def prepare_bg_clip(path_or_paths, duration, target_w=TARGET_W, target_h=TARGET_H):
+    """
+    Prepares a background clip. If a list of paths is provided, merges them with transitions (Mashup).
+    """
+    if isinstance(path_or_paths, list) and len(path_or_paths) > 1:
+        # Mashup Background Mode: equal part durations, no negative padding (sync-safe)
+        bg_clips = []
+        part_dur = duration / len(path_or_paths)
+
+        for path in path_or_paths:
+            path = get_preprocessed_bg(path, target_w=target_w, target_h=target_h)
+            clip = VideoFileClip(path, audio=False).set_duration(part_dur)
+            clip = clip.fx(vfx.loop, duration=part_dur)
+            bg_clips.append(clip)
+
+        bg = concatenate_videoclips(bg_clips, method='compose', padding=0)
+        bg = bg.subclip(0, duration)
+    else:
+        # Single Background Mode
+        path = path_or_paths[0] if isinstance(path_or_paths, list) else path_or_paths
+        path = get_preprocessed_bg(path, target_w=target_w, target_h=target_h)
+        bg = VideoFileClip(path, audio=False)
+        bg = bg.fx(vfx.loop, duration=duration).subclip(0, duration)
 
     if bg.h != target_h:
         bg = bg.resize(height=target_h)
@@ -672,12 +1363,12 @@ def prepare_bg_clip(path, duration, target_w=TARGET_W, target_h=TARGET_H):
         bg = bg.resize(width=target_w)
 
     bg = bg.crop(x_center=bg.w / 2, y_center=bg.h / 2, width=target_w, height=target_h)
-    logging.info(f"BG prepared size={bg.w}x{bg.h} target={target_w}x{target_h}")
     return bg
 
-def build_video(reciter_id, surah, start_ayah, end_ayah=None, quality='medium', format_type='reels', template='normal', person_name='', selected_font='random'):
+def build_video(reciter_id, surah, start_ayah, end_ayah=None, quality='medium', format_type='reels', template='normal', person_name='', selected_font='random', target_duration_seconds=None):
     """
     Enhanced video builder with quality presets, templates, and parallel processing.
+    target_duration_seconds: optional cap (e.g. 15-30) to limit total video length by ayah count.
     """
     global current_progress
     clips = []
@@ -693,10 +1384,24 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None, quality='medium', 
         template_config = TEMPLATES.get(template, TEMPLATES['normal'])
         bg_style = template_config['bg_style']
 
+        # Validation
+        if surah not in VERSE_COUNTS:
+            raise ValueError(f"Invalid surah: {surah}")
+        max_ayah = VERSE_COUNTS[surah]
+        if start_ayah < 1 or start_ayah > max_ayah:
+            raise ValueError(f"start_ayah {start_ayah} out of range for surah {surah} (1-{max_ayah})")
+        if not reciter_id or not str(reciter_id).strip():
+            raise ValueError("reciter_id is required")
+        try:
+            pick_bg(bg_style, count=1)
+        except Exception as e:
+            raise ValueError(f"No background videos found for style '{bg_style}'. Check vision folder.") from e
+
+        logging.info(f"build_video: surah={surah} ayahs={start_ayah}-(end) quality={quality} format={format_type} template={template}")
+
         add_log('[1] Clearing output folders...')
         update_progress(5, 'جاري تنظيف ملفات الإخراج...')
         clear_outputs()
-        max_ayah = VERSE_COUNTS[surah]
         if end_ayah is None:
             last_ayah = min(start_ayah + 9, max_ayah)
         else:
@@ -705,98 +1410,119 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None, quality='medium', 
         if last_ayah < start_ayah:
             last_ayah = start_ayah
 
-        total = last_ayah - start_ayah + 1
+        # Cap ayah count by format max duration or optional target (e.g. ~6s per ayah -> 30s = 5 ayahs)
+        max_duration = target_duration_seconds if target_duration_seconds is not None else (format_config.get('duration') or 30)
+        avg_ayah_seconds = 6
+        max_ayahs_by_duration = max(1, int(max_duration / avg_ayah_seconds))
+        last_ayah = min(last_ayah, start_ayah + max_ayahs_by_duration - 1)
+        logging.info(f"Format {format_type} target max duration: {max_duration}s, ayah range capped for ~{max_duration}s")
 
-        # Check duration limits for format
-        if format_config.get('duration'):
-            max_duration = format_config['duration']
-            logging.info(f"Format {format_type} max duration: {max_duration}s")
+        total = last_ayah - start_ayah + 1
 
         add_log(f'[2] Preparing {total} آيات (from {start_ayah} to {last_ayah}) with {quality} quality')
         update_progress(10, f'جاري تحضير {total} آيات بجودة {quality}...')
 
-        # Parallel processing with resource monitoring
+        # Limit workers to avoid CPU thrashing and crashes (leave headroom for system)
         cpu, mem = monitor_resources()
-        max_workers = 1 if mem > 75 else (2 if mem > 50 else 3)
-        logging.info(f"Using {max_workers} parallel workers (CPU: {cpu}%, MEM: {mem}%)")
+        num_cores = os.cpu_count() or 4
+        if mem > 85:
+            max_workers = 1
+        else:
+            max_workers = min(total, max(2, num_cores - 1))
+        logging.info(f"Using {max_workers} workers (capped to prevent thrashing)")
+
 
         # Prepare arguments for parallel processing
         ayah_args = [(reciter_id, surah, ayah, idx, template, bg_style, selected_font)
                      for idx, ayah in enumerate(range(start_ayah, last_ayah + 1), start=1)]
 
-        if max_workers > 1:
-            # Parallel processing
-            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                future_to_ayah = {executor.submit(process_single_ayah, args): args for args in ayah_args}
+        surah_name = SURAH_NAMES[surah - 1] if 1 <= surah <= len(SURAH_NAMES) else f"Surah{surah}"
+        clean_person_name = person_name.replace(" ", "_").replace("/", "_").replace("\\", "_") if person_name else "User"
+        filename = f"{clean_person_name}_{surah_name}_Ayah{start_ayah}-{last_ayah}_{quality}_{template}.mp4"
+        out = os.path.join(VIDEO_DIR, filename)
+        bitrate = quality_config.get('bitrate', '8M')
 
-                for i, future in enumerate(concurrent.futures.as_completed(future_to_ayah), 1):
-                    try:
+        if USE_FFMPEG_PIPELINE:
+            # Professional path: Pillow -> PNG, FFmpeg overlay + concat (no TextClip, no heavy MoviePy)
+            add_log('[2] Building segments with FFmpeg (Pillow + overlay)...')
+            segment_results = []
+            if max_workers > 1:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    future_to_args = {executor.submit(process_single_ayah_ffmpeg, a): a for a in ayah_args}
+                    for i, future in enumerate(concurrent.futures.as_completed(future_to_args), 1):
+                        ayah_num, seg_path = future.result()
+                        segment_results.append((ayah_num, seg_path))
+                        update_progress(int(10 + 70 * i / total), f'تم معالجة {i}/{total} آيات...')
+            else:
+                for i, args in enumerate(ayah_args, 1):
+                    ayah_num, seg_path = process_single_ayah_ffmpeg(args)
+                    segment_results.append((ayah_num, seg_path))
+                    update_progress(int(10 + 70 * i / total), f'تم معالجة الآية {i}/{total}...')
+            segment_results.sort(key=lambda x: x[0])
+            add_log('[4] Concatenating with FFmpeg...')
+            update_progress(85, 'جاري دمج المقاطع...')
+            list_path = os.path.join(AUDIO_DIR, "concat_list.txt")
+            with open(list_path, "w", encoding="utf-8") as f:
+                for _, seg_path in segment_results:
+                    f.write(f"file '{seg_path.replace(os.sep, '/')}'\n")
+            cmd_concat = [
+                FFMPEG_EXE, "-y", "-f", "concat", "-safe", "0", "-i", list_path,
+                "-c:v", "libx264", "-preset", quality_config["preset"], "-b:v", bitrate,
+                "-r", "30", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k"
+            ]
+            if os.name != "nt":
+                cmd_concat.extend(["-movflags", "+faststart"])
+            cmd_concat.append(out)
+            subprocess.run(cmd_concat, check=True, capture_output=True, text=True, timeout=600)
+            add_log('[6] Done!')
+            update_progress(100, 'تم بنجاح!')
+            current_progress['is_complete'] = True
+            current_progress['output_path'] = out
+            if os.path.isfile(out):
+                size_mb = os.path.getsize(out) / (1024 * 1024)
+                logging.info(f"Output written (FFmpeg): {out} ({size_mb:.2f} MB)")
+        else:
+            # MoviePy path (fallback)
+            if max_workers > 1:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    future_to_ayah = {executor.submit(process_single_ayah, args): args for args in ayah_args}
+                    for i, future in enumerate(concurrent.futures.as_completed(future_to_ayah), 1):
                         clip = future.result()
                         clips.append(clip)
-                        progress = 10 + (70 * i / total)
-                        update_progress(int(progress), f'تم معالجة {i}/{total} آيات...')
-                    except Exception as e:
-                        logging.error(f"Ayah processing failed: {e}")
-                        raise
-        else:
-            # Sequential processing (fallback)
-            for idx, args in enumerate(ayah_args, 1):
-                progress_per_ayah = 70 / total
-                base_progress = 10 + (idx - 1) * progress_per_ayah
-
-                clip = process_single_ayah(args)
-                clips.append(clip)
-
-                update_progress(int(base_progress + progress_per_ayah), f'تم معالجة الآية {idx}/{total}...')
-
-        add_log('[4] Concatenating segments with transitions...')
-        update_progress(85, 'جاري دمج المقاطع مع الانتقالات...')
-        # Use 'compose' method for transitions with crossfade
-        final = concatenate_videoclips(clips, method='compose', padding=-0.5)
-
-        # Generate filename with person name, date, and surah name
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        date_str = datetime.datetime.now().strftime("%d-%m-%Y")
-
-        # Get surah name
-        surah_name = SURAH_NAMES[surah - 1] if 1 <= surah <= len(SURAH_NAMES) else f"Surah{surah}"
-
-        # Clean person name for filename (remove special characters)
-        clean_person_name = person_name.replace(" ", "_").replace("/", "_").replace("\\", "_") if person_name else "User"
-
-        # Create new filename format: PersonName_SurahName_Ayahs_Quality_Template.mp4 (Removed Date as requested)
-        filename = f"{clean_person_name}_{surah_name}_Ayah{start_ayah}-{end_ayah}_{quality}_{template}.mp4"
-        out = os.path.join(VIDEO_DIR, filename)
-
-        add_log(f'[5] Writing final video -> {out}')
-        update_progress(90, 'جاري كتابة الفيديو النهائي...')
-
-        # Enhanced video writing with quality presets
-        ffmpeg_params = []
-        if os.name != 'nt':  # Not Windows
-            ffmpeg_params.append('-movflags')
-            ffmpeg_params.append('+faststart')
-
-        final.write_videofile(
-            out,
-            fps=quality_config['fps'],
-            codec=quality_config['codec'],
-            audio_codec='aac',
-            audio_bitrate='192k',
-            verbose=False,
-            preset=quality_config['preset'],
-            threads=quality_config['threads'],
-            ffmpeg_params=ffmpeg_params
-        )
-
-        add_log('[6] Done!')
-        update_progress(100, 'تم بنجاح!')
-        current_progress['is_complete'] = True
-        current_progress['output_path'] = out
+                        update_progress(int(10 + 70 * i / total), f'تم معالجة {i}/{total} آيات...')
+            else:
+                for idx, args in enumerate(ayah_args, 1):
+                    clip = process_single_ayah(args)
+                    clips.append(clip)
+                    update_progress(int(10 + 70 * (idx) / total), f'تم معالجة الآية {idx}/{total}...')
+            add_log('[4] Concatenating segments with transitions...')
+            update_progress(85, 'جاري دمج المقاطع مع الانتقالات...')
+            clips.sort(key=lambda c: getattr(c, 'ayah_number', 0))
+            final = concatenate_videoclips(clips, method='compose', padding=0)
+            add_log(f'[5] Writing final video -> {out}')
+            update_progress(90, 'جاري كتابة الفيديو النهائي...')
+            total_dur = final.duration
+            logging.info(f"Final clip duration: {total_dur:.1f}s, writing to {out}")
+            ffmpeg_params = ['-pix_fmt', 'yuv420p']
+            if os.name != 'nt':
+                ffmpeg_params.extend(['-movflags', '+faststart'])
+            threads_ff = quality_config.get('threads', num_cores)
+            final.write_videofile(
+                out, fps=quality_config['fps'], codec=quality_config['codec'],
+                audio_codec='aac', audio_bitrate='192k', bitrate=bitrate,
+                verbose=False, preset=quality_config['preset'], threads=threads_ff,
+                ffmpeg_params=ffmpeg_params, write_logfile=False
+            )
+            add_log('[6] Done!')
+            update_progress(100, 'تم بنجاح!')
+            current_progress['is_complete'] = True
+            current_progress['output_path'] = out
+            if os.path.isfile(out):
+                size_mb = os.path.getsize(out) / (1024 * 1024)
+                logging.info(f"Output written: {out} ({size_mb:.2f} MB)")
 
     except Exception as e:
-        logger_error_msg = f"Error in build_video: {str(e)}\n{traceback.format_exc()}"
-        logging.error(logger_error_msg)
+        logging.exception("Error in build_video")
         current_progress['error'] = str(e)
         add_log(f'[ERROR] {str(e)}')
         update_progress(0, f'خطأ: {str(e)}')
@@ -853,13 +1579,14 @@ def generate_video():
     template = data.get('template', 'normal')
     person_name = data.get('personName', '')  # New parameter for person's name
     selected_font = data.get('selectedFont', 'random')  # New parameter for selected font
+    target_duration_seconds = data.get('targetDurationSeconds')  # Optional: cap total duration (e.g. 15-30)
 
     reset_progress()
 
     # Start video generation in background thread with enhanced parameters
     thread = threading.Thread(
         target=build_video,
-        args=(reciter_id, surah, start_ayah, end_ayah, quality, format_type, template, person_name, selected_font),
+        args=(reciter_id, surah, start_ayah, end_ayah, quality, format_type, template, person_name, selected_font, target_duration_seconds),
         daemon=True
     )
     thread.start()
@@ -903,7 +1630,7 @@ def get_config():
 
 @app.route('/api/preview', methods=['POST'])
 def preview_video():
-    """Generate a 5-second preview of the first ayah"""
+    """Generate a preview of the first ayah (one verse)."""
     try:
         data = request.json
         reciter_id = data.get('reciter')
@@ -911,11 +1638,12 @@ def preview_video():
         ayah = int(data.get('ayah', 1))
         template = data.get('template', 'normal')
         quality = 'low'  # Always use low quality for preview
+        selected_font = data.get('selectedFont', 'random')
 
-        # Generate preview with just one ayah
+        # Generate preview with just one ayah; pass person_name='', selected_font, target_duration_seconds=None
         preview_thread = threading.Thread(
             target=build_video,
-            args=(reciter_id, surah, ayah, ayah, quality, 'reels', template),
+            args=(reciter_id, surah, ayah, ayah, quality, 'reels', template, '', selected_font, None),
             daemon=True
         )
         preview_thread.start()
