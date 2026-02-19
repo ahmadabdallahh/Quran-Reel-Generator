@@ -559,12 +559,36 @@ def detect_trailing_silence(sound, thresh, chunk=10):
 def download_audio(reciter_id, surah, ayah, idx):
     os.makedirs(AUDIO_DIR, exist_ok=True)
     fn = f'{surah:03d}{ayah:03d}.mp3'
-    url = f'https://everyayah.com/data/{reciter_id}/{fn}'
+
+    # Try multiple sources with timeout
+    sources = [
+        f'https://everyayah.com/data/{reciter_id}/{fn}',
+        f'https://download.quranicaudio.com/quran/{reciter_id}/{fn}',
+        f'https://www.everyayah.com/data/{reciter_id}/{fn}'
+    ]
+
     out = os.path.join(AUDIO_DIR, f'part{idx}.mp3')
-    r = http_requests.get(url)
-    r.raise_for_status()
-    with open(out, 'wb') as f:
-        f.write(r.content)
+
+    for attempt, url in enumerate(sources, 1):
+        try:
+            logging.info(f"Trying source {attempt}: {url}")
+            r = http_requests.get(url, timeout=30)  # Add timeout
+            r.raise_for_status()
+            with open(out, 'wb') as f:
+                f.write(r.content)
+
+            # Verify file has content
+            if os.path.getsize(out) < 1000:
+                raise ValueError(f"Audio file too small: {os.path.getsize(out)} bytes")
+
+            logging.info(f"✅ Audio downloaded from source {attempt}: {fn}")
+            break
+        except Exception as e:
+            logging.warning(f"Source {attempt} failed: {e}")
+            if attempt == len(sources):
+                raise RuntimeError(f"Failed to download audio for {surah}:{ayah} from all sources")
+
+    # Trim silence
     snd = AudioSegment.from_file(out, 'mp3')
     start = detect_leading_silence(snd, snd.dBFS - 16)
     end = detect_trailing_silence(snd, snd.dBFS - 16)
