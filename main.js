@@ -34,6 +34,7 @@ const VERSE_COUNTS = {
 
 // --- DOM Elements ---
 const surahSelect = document.getElementById('surahSelect');
+const surahSearch = document.getElementById('surahSearch');
 const startAyahInput = document.getElementById('startAyah');
 const endAyahInput = document.getElementById('endAyah');
 const reciterSelect = document.getElementById('reciterSelect');
@@ -66,8 +67,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Check for existing progress
     pollProgress();
 
-    // Load available fonts
-    loadAvailableFonts();
+    // Load available fonts & reciters
+    loadConfig();
 });
 
 
@@ -79,12 +80,65 @@ function initSurahs() {
         surahSelect.appendChild(option);
     });
 
-    surahSelect.addEventListener('change', () => {
-        const count = VERSE_COUNTS[surahSelect.value];
+    // Add search functionality
+    surahSearch.addEventListener('input', (e) => {
+        const searchTerm = e.target.value.toLowerCase();
+        const options = surahSelect.querySelectorAll('option');
+
+        options.forEach(option => {
+            const text = option.textContent.toLowerCase();
+            const matches = text.includes(searchTerm);
+            option.style.display = matches ? 'block' : 'none';
+        });
+
+        // Show first matching option
+        const firstVisible = Array.from(options).find(opt => opt.style.display !== 'none');
+        if (firstVisible && searchTerm.length > 0) {
+            surahSelect.value = firstVisible.value;
+            surahSelect.dispatchEvent(new Event('change'));
+        }
+    });
+
+    const updateMax = () => {
+        const count = VERSE_COUNTS[surahSelect.value] || 7;
         startAyahInput.max = count;
         endAyahInput.max = count;
+
+        // Ensure current values don't exceed new max
+        if (parseInt(startAyahInput.value) > count) startAyahInput.value = count;
+        if (parseInt(endAyahInput.value) > count) endAyahInput.value = count;
+    };
+
+    surahSelect.addEventListener('change', () => {
+        const count = VERSE_COUNTS[surahSelect.value];
+        updateMax();
         startAyahInput.value = 1;
         endAyahInput.value = Math.min(5, count);
+    });
+
+    // Run once on init to set correct max for the first surah
+    updateMax();
+
+    // Prevent manual entry exceeding max
+    [startAyahInput, endAyahInput].forEach(input => {
+        input.addEventListener('input', () => {
+            const max = parseInt(input.max);
+            if (parseInt(input.value) > max) input.value = max;
+            if (parseInt(input.value) < 1) input.value = 1;
+        });
+    });
+
+    // Prevent cross-over (start > end or end < start)
+    startAyahInput.addEventListener('change', () => {
+        const start = parseInt(startAyahInput.value);
+        const end = parseInt(endAyahInput.value);
+        if (start > end) endAyahInput.value = start;
+    });
+
+    endAyahInput.addEventListener('change', () => {
+        const start = parseInt(startAyahInput.value);
+        const end = parseInt(endAyahInput.value);
+        if (end < start) startAyahInput.value = end;
     });
 }
 
@@ -131,30 +185,48 @@ function initParticles() {
     }
 }
 
-async function loadAvailableFonts() {
+const refreshFontsBtn = document.getElementById('refreshFontsBtn');
+
+async function loadConfig() {
     try {
         const response = await fetch(`${API_BASE}/api/config`);
         const data = await response.json();
 
+        // 1. Load Fonts
         if (data.availableFonts && data.availableFonts.length > 0) {
-            // Clear existing options
             fontSelect.innerHTML = '<option value="random">عشوائي (تلقائي)</option>';
-
-            // Add fonts to dropdown
             data.availableFonts.forEach(font => {
                 const option = document.createElement('option');
                 option.value = font;
                 option.textContent = font.replace(/\.(ttf|otf)$/i, '');
                 fontSelect.appendChild(option);
             });
+        }
 
-            console.log('Loaded fonts:', data.availableFonts);
-        } else {
-            console.log('No fonts available');
+        // 2. Load Reciters (Synchronize with RECITERS_MAP from backend)
+        if (data.reciters) {
+            reciterSelect.innerHTML = '';
+            Object.entries(data.reciters).forEach(([displayName, internalValue]) => {
+                const option = document.createElement('option');
+                option.value = internalValue;
+                option.textContent = displayName;
+                reciterSelect.appendChild(option);
+            });
         }
     } catch (error) {
-        console.error('Failed to load fonts:', error);
+        console.error('Failed to load config:', error);
     }
+}
+
+// Global alias for compatibility
+const loadAvailableFonts = loadConfig;
+
+if (refreshFontsBtn) {
+    refreshFontsBtn.addEventListener('click', () => {
+        refreshFontsBtn.classList.add('spinning');
+        loadConfig();
+        setTimeout(() => refreshFontsBtn.classList.remove('spinning'), 1000);
+    });
 }
 
 
@@ -225,7 +297,8 @@ generateBtn.addEventListener('click', async (e) => {
         template: templateSelect.value,
         personName: personNameInput.value,
         format: formatSelect.value,
-        selectedFont: document.getElementById('fontSelect').value
+        selectedFont: document.getElementById('fontSelect').value,
+        showText: document.getElementById('showTextSelect').value === 'yes'
     };
 
     if (payload.endAyah < payload.startAyah) {
@@ -260,7 +333,8 @@ previewBtn.addEventListener('click', async () => {
         reciter: reciterSelect.value,
         surah: parseInt(surahSelect.value),
         ayah: parseInt(startAyahInput.value),
-        template: templateSelect.value
+        template: templateSelect.value,
+        showText: document.getElementById('showTextSelect').value === 'yes'
     };
 
     try {
