@@ -414,8 +414,9 @@ def get_specific_font(name):
         return path
     return WORKING_FONT
 
-# Initialize fonts at startup
-init_font_system()
+# NOTE: init_font_system() is called inside the __main__ block (bottom of file)
+# because it depends on process_arabic_text (defined further down) for its
+# pipeline validation. Calling it at module import time raises NameError.
 
 # =============================================================================
 # STEP 6: UNIFIED ARABIC TEXT PROCESSING (NEW: single function)
@@ -943,75 +944,6 @@ def record_download_failure():
     _circuit_breaker_failures += 1
     _circuit_breaker_last_failure = time.time()
 
-def normalize_audio(input_path, output_path):
-    """Normalize audio to standard format (44.1kHz, 2 channels, 128kbps) only if needed"""
-    try:
-        # Check if FFmpeg is available
-        if not FFMPEG_EXE:
-            logging.warning("FFmpeg not available for audio normalization")
-            return input_path
-
-        # First, get audio info to see if normalization is needed
-        try:
-            cmd_info = [
-                FFMPEG_EXE, "-i", input_path,
-                "-hide_banner"
-            ]
-            result = subprocess.run(cmd_info, capture_output=True, text=True, timeout=10)
-
-            # Parse audio info
-            needs_conversion = False
-            audio_info = result.stderr
-
-            # Check if already in target format
-            if "44100 Hz" in audio_info and "stereo" in audio_info and "128 kb/s" in audio_info:
-                logging.debug(f"Audio already in target format, skipping normalization")
-                return input_path
-
-            # Check if it's already AAC (which might cause issues)
-            if "aac" in audio_info.lower():
-                logging.debug(f"Audio is already AAC, skipping normalization to avoid codec issues")
-                return input_path
-
-        except Exception as e:
-            logging.debug(f"Could not analyze audio format, will attempt normalization: {e}")
-            needs_conversion = True
-
-        # Perform normalization only if needed
-        cmd = [
-            FFMPEG_EXE, "-y", "-i", input_path,
-            "-ar", "44100",  # Sample rate
-            "-ac", "2",      # Stereo channels
-            "-b:a", "128k",  # Bitrate
-            "-c:a", "libmp3lame",  # Use MP3 codec instead of AAC to avoid issues
-            "-avoid_negative_ts", "make_zero",  # Fix timestamp issues
-            output_path
-        ]
-
-        logging.debug(f"Normalizing audio: {os.path.basename(input_path)}")
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-
-        if result.returncode == 0 and os.path.exists(output_path):
-            # Verify the normalized file is valid
-            if os.path.getsize(output_path) > 1000:
-                logging.debug(f"Audio normalized successfully to MP3")
-                return output_path
-            else:
-                logging.warning(f"Normalized audio file too small, using original")
-                if os.path.exists(output_path):
-                    os.remove(output_path)
-                return input_path
-        else:
-            logging.warning(f"Audio normalization failed: {result.stderr}")
-            return input_path
-
-    except subprocess.TimeoutExpired:
-        logging.warning("Audio normalization timed out, using original")
-        return input_path
-    except Exception as e:
-        logging.warning(f"Audio normalization error: {e}")
-        return input_path
-
 def download_audio(reciter_id, surah, ayah, idx):
     """Download audio for one ayah with enhanced retry logic and circuit breaker"""
     fn = f'{surah:03d}{ayah:03d}.mp3'
@@ -1022,13 +954,12 @@ def download_audio(reciter_id, surah, ayah, idx):
 
     # Check cache first
     cached_path = get_cached_audio_path(reciter_id, surah, ayah)
-    normalized_cache_path = cached_path.replace('.mp3', '_normalized.mp3')
 
-    if os.path.exists(normalized_cache_path) and os.path.getsize(normalized_cache_path) > 1000:
-        logging.debug(f"Using cached normalized audio: {fn}")
+    if os.path.exists(cached_path) and os.path.getsize(cached_path) > 1000:
+        logging.debug(f"Using cached audio: {fn}")
         # Copy to temp directory for processing
         out = os.path.join(TEMP_DIR, f'audio_{idx:03d}.mp3')
-        shutil.copy2(normalized_cache_path, out)
+        shutil.copy2(cached_path, out)
         return out
 
     # Try multiple sources with different domains
@@ -1075,31 +1006,10 @@ def download_audio(reciter_id, surah, ayah, idx):
 
             logging.debug(f"Audio downloaded: {fn} ({os.path.getsize(out)} bytes)")
 
-            # Normalize audio (optional - if it fails, continue with original)
-            try:
-                normalized_out = out.replace('.mp3', '_normalized.mp3')
-                normalized_result = normalize_audio(out, normalized_out)
-
-                if normalized_result != out:
-                    # Use normalized version
-                    os.remove(out)  # Remove original
-                    os.rename(normalized_result, out)
-                    logging.debug(f"Audio normalized for processing")
-                else:
-                    # Normalization failed, but we have the original
-                    logging.debug(f"Using original audio (normalization skipped)")
-
-            except Exception as e:
-                logging.warning(f"Audio normalization step failed: {e}")
-                # Continue with original audio
-
-            # Save to cache (both original and normalized)
+            # Save to cache (the downloaded file as-is)
             try:
                 os.makedirs(os.path.dirname(cached_path), exist_ok=True)
                 shutil.copy2(out, cached_path)
-
-                # Also save normalized version
-                shutil.copy2(out, normalized_cache_path)
                 logging.debug(f"Audio cached: {cached_path}")
             except Exception as e:
                 logging.warning(f"Failed to cache audio: {e}")
@@ -1240,8 +1150,8 @@ def init_bg_cache():
 
     logging.debug(f"BG cache initialized: {len(BG_CACHE)} styles")
 
-# Initialize background cache at startup
-init_bg_cache()
+# NOTE: init_bg_cache() is called inside the __main__ block (bottom of file)
+# so it runs after all other definitions are in place.
 
 def pick_bg(style='nature', count=1):
     """Select background video(s) from style-specific folders"""
@@ -1287,7 +1197,7 @@ def get_preprocessed_bg(bg_path, target_w=TARGET_W, target_h=TARGET_H):
             # Additional validation: try to read the file with FFprobe
             try:
                 result = subprocess.run([
-                    FFMPEG_EXE.replace('ffmpeg', 'ffprobe'),
+                    FFPROBE_EXE,
                     '-v', 'error',
                     '-show_format',
                     '-show_streams',
@@ -1729,7 +1639,7 @@ def process_single_ayah_ffmpeg(args):
 
         # Select background using rotator to prevent repetition
         bg_path = get_next_background(bg_style, count=1)
-        bg_paths = [bg_path] if isinstance(bg_path, str) else bg_paths
+        bg_paths = bg_path if isinstance(bg_path, list) else [bg_path]
         logging.debug(f"Segment {idx}: Using background {os.path.basename(bg_paths[0])}")
 
         # Render text to PNG
@@ -1886,17 +1796,19 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
         add_log('Concatenating segments with crossfade transitions...')
         update_progress(85, 'جاري دمج المقاطع مع انتقالات احترافية...')
 
-        # Define list_path outside of conditional blocks to avoid scoping issues
-        list_path = os.path.join(TEMP_DIR, "concat_list.txt")
+        # Always build the concat list file up-front so any fallback can reuse it.
+        # This avoids UnboundLocalError on 'list_path' if the crossfade path fails
+        # before the list is created.
+        list_path = os.path.join(TEMP_DIR, f"concat_{int(time.time() * 1000)}.txt")
+        with open(list_path, "w", encoding="utf-8") as f:
+            for _, seg_path in segment_results:
+                abs_path = os.path.abspath(seg_path).replace(os.sep, '/').replace("'", "'\\''")
+                f.write(f"file '{abs_path}'\n")
+
         cmd_concat = None
 
         if len(segment_results) <= 1:
             # Single segment - simple concat
-            with open(list_path, "w", encoding="utf-8") as f:
-                for _, seg_path in segment_results:
-                    abs_path = os.path.abspath(seg_path).replace(os.sep, '/').replace("'", "'\\''")
-                    f.write(f"file '{abs_path}'\n")
-
             cmd_concat = [
                 FFMPEG_EXE, "-y", "-f", "concat", "-safe", "0", "-i", list_path,
                 "-c:v", "libx264", "-preset", "ultrafast", "-threads", "4",
@@ -1940,12 +1852,7 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
             except Exception as e:
                 logging.warning(f"Crossfade setup failed, using simple concat: {e}")
 
-                # Fallback to simple concat
-                with open(list_path, "w", encoding="utf-8") as f:
-                    for _, seg_path in segment_results:
-                        abs_path = os.path.abspath(seg_path).replace(os.sep, '/').replace("'", "'\\''")
-                        f.write(f"file '{abs_path}'\n")
-
+                # Fallback to simple concat (list_path already exists)
                 cmd_concat = [
                     FFMPEG_EXE, "-y", "-f", "concat", "-safe", "0", "-i", list_path,
                     "-c:v", "libx264", "-preset", "ultrafast", "-threads", "4",
@@ -1966,15 +1873,8 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
             logging.error(f"STDOUT: {e.stdout}")
             logging.error(f"STDERR: {e.stderr}")
 
-            # Fallback: try without fade effects
+            # Fallback: try without fade effects (list_path already exists from the top)
             logging.info("Trying fallback without fade effects...")
-
-            # Ensure list_path exists for fallback
-            if not os.path.exists(list_path):
-                with open(list_path, "w", encoding="utf-8") as f:
-                    for _, seg_path in segment_results:
-                        abs_path = os.path.abspath(seg_path).replace(os.sep, '/').replace("'", "'\\''")
-                        f.write(f"file '{abs_path}'\n")
 
             cmd_fallback = [
                 FFMPEG_EXE, "-y", "-f", "concat", "-safe", "0", "-i", list_path,
@@ -1990,7 +1890,7 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
                 logging.error(f"Fallback also failed!")
                 logging.error(f"Fallback STDERR: {fallback_e.stderr}")
 
-                # Last resort: re-encode everything
+                # Last resort: re-encode everything (list_path already exists)
                 logging.info("Last resort: re-encoding all segments...")
                 cmd_last_resort = [
                     FFMPEG_EXE, "-y", "-f", "concat", "-safe", "0", "-i", list_path,
@@ -2158,6 +2058,9 @@ if __name__ == '__main__':
     logging.info('Performing startup cleanup...')
     cleanup_orphaned_temp_files()
     cleanup_audio_cache()  # Clean cache on startup
+
+    # Initialize font system (after all functions are defined)
+    init_font_system()
 
     # Initialize background cache
     init_bg_cache()
