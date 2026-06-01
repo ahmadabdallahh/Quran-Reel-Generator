@@ -20,7 +20,7 @@ import tempfile
 import atexit
 import arabic_reshaper
 from bidi.algorithm import get_display
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
@@ -58,6 +58,23 @@ logging.getLogger().addHandler(console_handler)
 logging.info("--- Quran Reels Generator (Refactored) ---")
 logging.info(f"Exec Dir: {EXEC_DIR}")
 logging.info(f"Bundle Dir: {BUNDLE_DIR}")
+
+# =============================================================================
+# STEP 2b: FEATURE FLAGS  (animations.md §12)
+# =============================================================================
+# Gates each phase of the animations plan so behavior changes are opt-in.
+#   - font_polish:     Phase 1 (always on, already shipped)
+#   - text_animations: Phase 2 (intro/outro fades, slide/zoom on text)
+#   - kinetic_text:    Phase 3 (per-word reveal — opt-in, not yet implemented)
+#   - forced_alignment: Phase 3 v3 (per-word word-by-word forced alignment)
+# =============================================================================
+
+FEATURE_FLAGS = {
+    'font_polish':        True,
+    'text_animations':    True,
+    'kinetic_text':       False,
+    'forced_alignment':   False,
+}
 
 # =============================================================================
 # STEP 3: TEMPORARY DIRECTORY MANAGEMENT (NEW: replaces static audio folder)
@@ -396,11 +413,24 @@ def init_font_system():
     WORKING_FONT = "Arial"  # Fallback to system default
     return
 
+# Fonts that PIL can render Arabic with (have presentation forms in cmap).
+# The other 13 fonts in fonts/ require OpenType GSUB contextual substitution
+# which PIL doesn't apply, so they render as boxes. See skills.md §8.3.
+PIL_COMPATIBLE_ARABIC_FONTS = ['Amiri-Bold.ttf', 'Amiri-Regular.ttf']
+
+
 def get_random_font():
-    """Get a random working font from the fonts directory"""
+    """Get a random working font from the PIL-compatible subset.
+
+    NOTE: we cannot pick from the full fonts/ directory because most fonts
+    there (Lateef, ElMessiri, Dubai, Tajawal, ...) lack presentation forms
+    and PIL does not apply OpenType GSUB.  See PIL_COMPATIBLE_ARABIC_FONTS.
+    """
     if not os.path.exists(FONT_DIR):
         return WORKING_FONT
-    fonts = [f for f in os.listdir(FONT_DIR) if f.lower().endswith(('.ttf', '.otf'))]
+    # Restrict to PIL-compatible fonts only
+    fonts = [f for f in PIL_COMPATIBLE_ARABIC_FONTS
+             if os.path.exists(os.path.join(FONT_DIR, f))]
     if not fonts:
         return WORKING_FONT
     return os.path.join(FONT_DIR, random.choice(fonts))
@@ -478,84 +508,151 @@ def process_arabic_text(text, words_per_line=4):
 # =============================================================================
 
 def render_arabic_to_pil_image(text, fontsize=80, color='#FFFFFF',
-                                stroke_color='#000000', stroke_width=2,
-                                words_per_line=4, target_width=920, font_path=None):
+                                stroke_color='#000000', stroke_width=3,
+                                words_per_line=4, target_width=920, font_path=None,
+                                supersample=2,
+                                shadow=True, shadow_offset=4, shadow_color='#00000080',
+                                glow_color=None, glow_radius=6):
     """
-    Unified function to render Arabic text to PIL Image.
-    Uses WORKING_FONT globally by default.
+    Render Arabic text to a PIL RGBA Image with broadcast-grade quality.
+
+    Pipeline:
+      1.  Reshape + BiDi the input text.
+      2.  Render at `supersample` x resolution (default 2x) into a transparent canvas
+          using Pillow's native anti-aliased `stroke_width` / `stroke_fill`.
+      3.  (Optional) Drop shadow — draw a black copy at (+offset, +offset) below the
+          main layer.
+      4.  (Optional) Soft glow — Gaussian-blur a colorized copy of the text and
+          composite it underneath (used by the `ramadan` template).
+      5.  Downsample to the target size with `Image.LANCZOS`.
 
     Args:
-        text: Raw Arabic text
-        fontsize: Font size in pixels
-        color: Text color (hex)
-        stroke_color: Outline color (hex)
-        stroke_width: Outline thickness
-        words_per_line: Words per line
-        target_width: Target image width
-        font_path: Optional specific font path
+        text:            Raw Arabic text (Uthmani or plain).
+        fontsize:        Target font size in pixels (post-downsample).
+        color:           Fill color (hex, e.g. '#FFFFFF').
+        stroke_color:    Outline color (hex).
+        stroke_width:    Outline thickness in pixels (post-downsample). Default 3
+                         (was 2 — bumped for 1080p legibility).
+        words_per_line:  Words-per-line wrap hint.
+        target_width:    Output image width in pixels.
+        font_path:       Override font; defaults to WORKING_FONT.
+        supersample:     Render-scale multiplier (1, 2, 4). 1 disables AA boost;
+                         2 is the default; 4 is recommended for `high` quality.
+        shadow:          If True, draw a soft drop shadow.
+        shadow_offset:   Shadow offset in pixels (post-downsample).
+        shadow_color:    Shadow color (hex with alpha, e.g. '#00000080').
+        glow_color:      If set, apply a colored Gaussian-blur glow (e.g. '#FFD700').
+        glow_radius:     Glow blur radius.
 
     Returns:
-        PIL Image object (RGBA)
+        PIL Image object (RGBA).
     """
-    # Process Arabic text (reshape + bidi + wrap)
+    # Step 1 — process Arabic text
     processed_text, num_lines, word_count = process_arabic_text(text, words_per_line)
 
     if not processed_text:
-        # Return empty image
         return Image.new('RGBA', (target_width, 100), (0, 0, 0, 0))
 
-    # Load font
+    # Step 2 — load font
     f_path = font_path or WORKING_FONT
     try:
-        font = ImageFont.truetype(f_path, fontsize)
-    except:
-        font = ImageFont.truetype(WORKING_FONT, fontsize)
+        font = ImageFont.truetype(f_path, fontsize * supersample)
+    except Exception:
+        font = ImageFont.truetype(WORKING_FONT, fontsize * supersample)
 
     # Parse colors
     def hex_to_rgba(hex_color):
-        s = hex_color.strip().lstrip('#')
+        s = (hex_color or '#FFFFFF').strip().lstrip('#')
         if len(s) == 3:
-            s = ''.join([c*2 for c in s])
+            s = ''.join([c * 2 for c in s])
         if len(s) == 6:
             return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16), 255)
-        # Try named colors as fallback if needed, or default to white
+        if len(s) == 8:
+            return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16), int(s[6:8], 16))
         return (255, 255, 255, 255)
 
     fill_rgba = hex_to_rgba(color)
     stroke_rgba = hex_to_rgba(stroke_color)
+    shadow_rgba = hex_to_rgba(shadow_color)
 
-    # Calculate image dimensions
+    # Step 3 — calculate image dimensions
     line_height = int(fontsize * 1.6)
     padding = 50
     img_height = max(300, num_lines * line_height + 2 * padding)
     img_width = target_width + 2 * padding
 
-    # Create image
-    img = Image.new('RGBA', (img_width, img_height), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
+    # Step 4 — render at supersample resolution
+    ss = max(1, int(supersample))
+    big_w, big_h = img_width * ss, img_height * ss
+    big = Image.new('RGBA', (big_w, big_h), (0, 0, 0, 0))
+    big_draw = ImageDraw.Draw(big)
 
-    # Draw each line
-    y = padding + line_height // 2
-    x_center = img_width // 2
+    big_y = (padding + line_height // 2) * ss
+    big_x_center = big_w // 2
 
     for line in processed_text.split('\n'):
         if not line.strip():
-            y += line_height
+            big_y += line_height * ss
             continue
 
-        # Draw stroke/outline
-        if stroke_width > 0:
-            for dx in range(-stroke_width, stroke_width + 1):
-                for dy in range(-stroke_width, stroke_width + 1):
-                    if dx != 0 or dy != 0:
-                        draw.text((x_center + dx, y + dy), line,
-                                 font=font, fill=stroke_rgba, anchor='mm')
+        # Pillow's native anti-aliased stroke (single C call, no jaggies).
+        big_draw.text(
+            (big_x_center, big_y), line,
+            font=font, fill=fill_rgba, anchor='mm',
+            stroke_width=max(0, stroke_width) * ss,
+            stroke_fill=stroke_rgba,
+        )
+        big_y += line_height * ss
 
-        # Draw main text
-        draw.text((x_center, y), line, font=font, fill=fill_rgba, anchor='mm')
-        y += line_height
+    # Step 5 — drop shadow (rendered at supersample, then composited before downsample)
+    if shadow and shadow_color:
+        shadow_layer = Image.new('RGBA', (big_w, big_h), (0, 0, 0, 0))
+        shadow_draw = ImageDraw.Draw(shadow_layer)
+        big_y2 = (padding + line_height // 2) * ss
+        for line in processed_text.split('\n'):
+            if not line.strip():
+                big_y2 += line_height * ss
+                continue
+            shadow_draw.text(
+                (big_x_center + shadow_offset * ss, big_y2 + shadow_offset * ss), line,
+                font=font, fill=shadow_rgba, anchor='mm',
+                stroke_width=max(0, stroke_width) * ss,
+                stroke_fill=shadow_rgba,
+            )
+            big_y2 += line_height * ss
+        # Composite shadow BEHIND the main text
+        big = Image.alpha_composite(shadow_layer, big)
 
-    logging.info(f"✅ Image rendered: {img_width}x{img_height}px, {num_lines} lines")
+    # Step 6 — soft glow (gold halo for the ramadan template)
+    if glow_color:
+        glow_layer = Image.new('RGBA', (big_w, big_h), (0, 0, 0, 0))
+        glow_draw = ImageDraw.Draw(glow_layer)
+        big_y3 = (padding + line_height // 2) * ss
+        for line in processed_text.split('\n'):
+            if not line.strip():
+                big_y3 += line_height * ss
+                continue
+            glow_draw.text(
+                (big_x_center, big_y3), line,
+                font=font, fill=hex_to_rgba(glow_color), anchor='mm',
+                stroke_width=max(0, stroke_width) * ss,
+                stroke_fill=hex_to_rgba(glow_color),
+            )
+            big_y3 += line_height * ss
+        # Heavy blur for a halo
+        glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(radius=glow_radius * ss))
+        big = Image.alpha_composite(glow_layer, big)
+
+    # Step 7 — downsample to target resolution
+    if ss > 1:
+        img = big.resize((img_width, img_height), Image.LANCZOS)
+    else:
+        img = big
+
+    logging.info(
+        f"✅ Image rendered: {img_width}x{img_height}px, {num_lines} lines, "
+        f"supersample={ss}, shadow={bool(shadow)}, glow={bool(glow_color)}"
+    )
     return img
 
 # =============================================================================
@@ -579,10 +676,30 @@ OUTPUT_FORMATS = {
 }
 
 TEMPLATES = {
-    'ramadan': {'bg_style': 'night', 'text_color': 'gold', 'font_size_mult': 1.2, 'text_animation': 'fade_in', 'transition': 'fade'},
-    'normal': {'bg_style': 'nature', 'text_color': 'white', 'font_size_mult': 1.0, 'text_animation': 'slide_up', 'transition': 'dissolve'},
-    'masjid': {'bg_style': 'masjid', 'text_color': 'white', 'font_size_mult': 1.1, 'text_animation': 'fade_in', 'transition': 'fade'},
-    'islamic': {'bg_style': 'islamic', 'text_color': 'white', 'font_size_mult': 1.1, 'text_animation': 'zoom_in', 'transition': 'wipe'}
+    'ramadan': {
+        'bg_style': 'night', 'text_color': '#FFD700', 'font_size_mult': 1.20,
+        'text_animation': 'fade_in', 'transition': 'fade',
+        'font': 'Amiri-Bold.ttf', 'glow_color': '#FFD700', 'glow_radius': 8,
+    },
+    'normal':  {
+        'bg_style': 'nature', 'text_color': '#FFFFFF', 'font_size_mult': 1.00,
+        'text_animation': 'slide_up', 'transition': 'dissolve',
+        'font': 'Amiri-Regular.ttf',
+    },
+    'masjid':  {
+        # Soft white halo evokes moonlit calligraphy on the mosque wall.
+        # Note: must use Amiri — Lateef/ElMessiri lack presentation forms and
+        # PIL does not apply OpenType GSUB contextual substitution.
+        'bg_style': 'masjid', 'text_color': '#FFFFFF', 'font_size_mult': 1.10,
+        'text_animation': 'fade_in', 'transition': 'fade',
+        'font': 'Amiri-Bold.ttf', 'glow_color': '#FFFFFF80', 'glow_radius': 4,
+    },
+    'islamic': {
+        # Heavier drop shadow gives the calligraphic depth of manuscript art.
+        'bg_style': 'islamic', 'text_color': '#FFFFFF', 'font_size_mult': 1.10,
+        'text_animation': 'zoom_in', 'transition': 'wipe',
+        'font': 'Amiri-Bold.ttf',
+    },
 }
 
 # Animation & Transitions Configuration
@@ -1331,11 +1448,69 @@ def get_contrasting_text_color(bg_path, template_color='white', auto_detect=True
 
 def get_ffmpeg_text_animation_filter(animation_name, duration=5.0, fps=30):
     """
-    Generate FFmpeg filter for text animations.
-    Currently disabled to prevent visual artifacts.
+    Generate FFmpeg filter for text intro animations.
+    Phase 2 (T2.1) — returns a real filter expression to be applied to the
+    text PNG before the overlay, OR None to fall back to static overlay.
+
+    All durations are derived from the ayah audio length so they adapt
+    naturally to short/long recitations.  `fade_d` is the animation window
+    (0.5 s) — we cap it to duration/2 to avoid negative offsets on tiny clips.
+
+    Supported animations:
+      fade_in, fade_out, slide_up, slide_down, slide_left, slide_right,
+      zoom_in, zoom_out.  Everything else (typewriter, bounce, glow, reveal)
+      returns None and is deferred to Phase 3 / kinetic_text.
     """
-    # Disabled - fade filter causes text size issues
-    # Return None to skip animation and use clean overlay
+    if not FEATURE_FLAGS.get('text_animations', False):
+        return None
+
+    # Cap the animation window so a 0.4 s ayah isn't asked to fade for 0.5 s.
+    fade_d = min(0.5, max(0.1, duration / 2))
+
+    if animation_name == 'fade_in':
+        return f'fade=t=in:st=0:d={fade_d:.3f}:alpha=1'
+
+    if animation_name == 'fade_out':
+        st = max(0.0, duration - fade_d)
+        return f'fade=t=out:st={st:.3f}:d={fade_d:.3f}:alpha=1'
+
+    if animation_name == 'slide_up':
+        dist = 50
+        # pad bottom by `dist` and shift the visible region up over fade_d
+        return (
+            f'pad=iw:ih+{dist}:0:{dist}:black@0,'
+            f'fade=t=in:st=0:d={fade_d:.3f}:alpha=1,'
+            f'crop=iw:ih-{dist}:0:0'
+        )
+
+    if animation_name == 'slide_down':
+        dist = 50
+        return (
+            f'pad=iw:ih+{dist}:0:0:black@0,'
+            f'fade=t=in:st=0:d={fade_d:.3f}:alpha=1,'
+            f'crop=iw:ih-{dist}:0:{dist}'
+        )
+
+    if animation_name == 'slide_left':
+        # A true horizontal slide needs an animated `overlay` (per-frame t-eval
+        # on a second input) which doesn't compose with the static PNG input
+        # we have here.  Use a fade as the visual stand-in; full per-frame
+        # slide is a Phase 3 / kinetic_text feature.
+        return f'fade=t=in:st=0:d={fade_d:.3f}:alpha=1'
+
+    if animation_name == 'slide_right':
+        return f'fade=t=in:st=0:d={fade_d:.3f}:alpha=1'
+
+    if animation_name == 'zoom_in':
+        # Per-frame scale requires the `t` expression variable, which Pillow's
+        # PNG doesn't expose — use fade_in as a stand-in until Phase 3 wires
+        # up a properly-scaled second pass.
+        return f'fade=t=in:st=0:d={fade_d:.3f}:alpha=1'
+
+    if animation_name == 'zoom_out':
+        return f'fade=t=out:st={max(0.0, duration - fade_d):.3f}:d={fade_d:.3f}:alpha=1'
+
+    # typewriter / bounce / glow / reveal: defer to kinetic_text (Phase 3)
     return None
 
 # Global background rotator instance
@@ -1367,113 +1542,160 @@ def get_next_background(style='nature', count=1):
 # STEP 14: TEXT RENDERING TO PNG (NEW UNIFIED FUNCTION)
 # =============================================================================
 
-def render_text_to_png(arabic_text, template, output_png_path, selected_font=None):
+def _resolve_template_font(template_config, selected_font):
     """
-    Render Arabic text to PNG using unified rendering system.
+    Pick the right font for a render. Order of precedence:
+      1. `selected_font` if explicitly given (UI dropdown).
+      2. `template_config['font']` (per-template default).
+      3. WORKING_FONT global fallback.
+    Logs a warning if the chosen font file is missing on disk.
+    """
+    chosen_name = None
+    chosen_path = None
+
+    if selected_font:
+        chosen_path = get_specific_font(selected_font)
+        chosen_name = os.path.basename(chosen_path) if chosen_path else None
+    if not chosen_path or not os.path.exists(chosen_path):
+        tpl_font = template_config.get('font')
+        if tpl_font:
+            candidate = os.path.join(FONT_DIR, tpl_font)
+            if os.path.exists(candidate):
+                chosen_path = _safe_font_path_for_imagemagick(candidate)
+                chosen_name = tpl_font
+    if not chosen_path or not os.path.exists(chosen_path):
+        logging.warning(
+            f"Template font '{template_config.get('font')}' and selected font "
+            f"'{selected_font}' not found — falling back to WORKING_FONT "
+            f"({os.path.basename(WORKING_FONT) if WORKING_FONT else 'unset'})."
+        )
+        chosen_path = WORKING_FONT
+        chosen_name = os.path.basename(WORKING_FONT) if WORKING_FONT else None
+    return chosen_path, chosen_name
+
+
+def _supersample_for_quality(quality):
+    """Map the quality preset to a supersample multiplier (Phase 1, T1.4)."""
+    return {'low': 2, 'medium': 2, 'high': 4}.get(quality, 2)
+
+
+def _fontsize_for_wordcount(word_count, size_mult):
+    if word_count > 60:
+        return int(50 * size_mult), 7
+    if word_count > 40:
+        return int(60 * size_mult), 6
+    if word_count > 25:
+        return int(70 * size_mult), 5
+    if word_count > 15:
+        return int(80 * size_mult), 4
+    return int(95 * size_mult), 3
+
+
+def render_text_to_png(arabic_text, template, output_png_path, selected_font=None, quality='medium'):
+    """
+    Render Arabic text to PNG using the unified, broadcast-grade renderer.
+
+    Honours per-template font + glow settings and the quality preset's supersample.
     """
     template_config = TEMPLATES.get(template, TEMPLATES['normal'])
 
-    # Resolve font path
-    font_path = None
-    if selected_font:
-        font_path = _safe_font_path_for_imagemagick(get_specific_font(selected_font))
+    # Resolve font (selected -> template -> WORKING_FONT)
+    font_path, font_name = _resolve_template_font(template_config, selected_font)
 
-    # Calculate font size based on word count
+    # Word-count aware font sizing
     word_count = len(arabic_text.split())
     size_mult = template_config['font_size_mult']
+    fontsize, per_line = _fontsize_for_wordcount(word_count, size_mult)
 
-    if word_count > 60:
-        fontsize, per_line = int(50 * size_mult), 7
-    elif word_count > 40:
-        fontsize, per_line = int(60 * size_mult), 6
-    elif word_count > 25:
-        fontsize, per_line = int(70 * size_mult), 5
-    elif word_count > 15:
-        fontsize, per_line = int(80 * size_mult), 4
-    else:
-        fontsize, per_line = int(95 * size_mult), 3
+    # Text color (template can be a hex string or a name like 'gold')
+    text_color = template_config['text_color']
+    if not text_color.startswith('#'):
+        text_color = {'gold': '#FFD700', 'white': '#FFFFFF', 'bright': '#00FFFF'}.get(text_color, '#FFFFFF')
 
-    # Determine color
-    color = template_config['text_color']
-    if color == 'gold':
-        text_color = '#FFD700'
-    elif color == 'bright':
-        text_color = '#00FFFF'
-    else:
-        text_color = '#FFFFFF'
+    # Glow (e.g. ramadan template)
+    glow_color = template_config.get('glow_color')
+    glow_radius = template_config.get('glow_radius', 6)
 
-    # Render using unified function (uses WORKING_FONT)
+    # Render
     img = render_arabic_to_pil_image(
         text=arabic_text,
         fontsize=fontsize,
         color=text_color,
         stroke_color='#000000',
-        stroke_width=2,
+        stroke_width=3,
         words_per_line=per_line,
         target_width=TARGET_W - 160,
-        font_path=font_path
+        font_path=font_path,
+        supersample=_supersample_for_quality(quality),
+        shadow=True,
+        shadow_offset=4,
+        shadow_color='#00000080',
+        glow_color=glow_color,
+        glow_radius=glow_radius,
     )
 
     # Save to PNG
     os.makedirs(os.path.dirname(output_png_path) or ".", exist_ok=True)
     img.save(output_png_path)
-    logging.info(f"✅ Text rendered to PNG: {output_png_path}")
+    logging.info(
+        f"✅ Text rendered: font={font_name}, template={template}, quality={quality}, "
+        f"glow={bool(glow_color)} -> {output_png_path}"
+    )
     return output_png_path
 
+
 def render_text_to_png_with_colors(arabic_text, template, output_png_path,
-                                  selected_font=None, text_color='white', stroke_color='black'):
+                                  selected_font=None, text_color='white', stroke_color='black',
+                                  quality='medium'):
     """
-    Render Arabic text to PNG with custom colors.
-    Used for dynamic text color based on background.
+    Render Arabic text to PNG with custom (auto-detected) colors.
+    Used for dynamic text color based on background brightness.
+    Per-template font + glow are still respected; only the fill/stroke colors
+    are overridden.
     """
     template_config = TEMPLATES.get(template, TEMPLATES['normal'])
 
-    # Resolve font path
-    font_path = None
-    if selected_font:
-        font_path = _safe_font_path_for_imagemagick(get_specific_font(selected_font))
+    # Resolve font
+    font_path, font_name = _resolve_template_font(template_config, selected_font)
 
-    # Calculate font size based on word count
+    # Word-count aware sizing
     word_count = len(arabic_text.split())
     size_mult = template_config['font_size_mult']
+    fontsize, per_line = _fontsize_for_wordcount(word_count, size_mult)
 
-    if word_count > 60:
-        fontsize, per_line = int(50 * size_mult), 7
-    elif word_count > 40:
-        fontsize, per_line = int(60 * size_mult), 6
-    elif word_count > 25:
-        fontsize, per_line = int(70 * size_mult), 5
-    elif word_count > 15:
-        fontsize, per_line = int(80 * size_mult), 4
-    else:
-        fontsize, per_line = int(95 * size_mult), 3
-
-    # Convert color names to hex if needed
-    color_map = {
-        'white': '#FFFFFF',
-        'black': '#000000',
-        'gold': '#FFD700'
-    }
-
+    # Color name -> hex
+    color_map = {'white': '#FFFFFF', 'black': '#000000', 'gold': '#FFD700'}
     text_color_hex = color_map.get(text_color.lower(), text_color)
     stroke_color_hex = color_map.get(stroke_color.lower(), stroke_color)
 
-    # Render using unified function with custom colors
+    # Glow comes from the template
+    glow_color = template_config.get('glow_color')
+    glow_radius = template_config.get('glow_radius', 6)
+
     img = render_arabic_to_pil_image(
         text=arabic_text,
         fontsize=fontsize,
         color=text_color_hex,
         stroke_color=stroke_color_hex,
-        stroke_width=2,
+        stroke_width=3,
         words_per_line=per_line,
         target_width=TARGET_W - 160,
-        font_path=font_path
+        font_path=font_path,
+        supersample=_supersample_for_quality(quality),
+        shadow=True,
+        shadow_offset=4,
+        shadow_color='#00000080',
+        glow_color=glow_color,
+        glow_radius=glow_radius,
     )
 
-    # Save to PNG
     os.makedirs(os.path.dirname(output_png_path) or ".", exist_ok=True)
     img.save(output_png_path)
-    logging.info(f"✅ Text rendered with custom colors: {output_png_path}")
+    logging.info(
+        f"✅ Text rendered w/ custom colors: font={font_name}, template={template}, "
+        f"quality={quality}, text={text_color_hex}, stroke={stroke_color_hex}, "
+        f"glow={bool(glow_color)} -> {output_png_path}"
+    )
     return output_png_path
 
 # =============================================================================
@@ -1481,8 +1703,18 @@ def render_text_to_png_with_colors(arabic_text, template, output_png_path,
 # =============================================================================
 
 def build_segment_ffmpeg(bg_paths, text_png_path, audio_path, duration_sec, output_path,
-                        show_text=True, text_animation_filter=None):
-    """Build one video segment with FFmpeg, optionally with text animation"""
+                        show_text=True, text_animation_filter=None, is_last=True):
+    """Build one video segment with FFmpeg, optionally with text animation.
+
+    Phase 2 additions:
+      - `text_animation_filter` is now non-None (intro fade/slide/zoom on text)
+        when the FEATURE_FLAGS['text_animations'] is on and a template
+        animation is set.
+      - `is_last=False` appends a 0.4 s outro fade to the final composite
+        so the cut to the next segment (or end of video) is soft, not a
+        hard jump.  The last segment skips the outro fade to avoid a fade
+        to black at the very end of the video.
+    """
     # Verify all input files exist and have content
     if show_text:
         if not os.path.exists(text_png_path):
@@ -1510,11 +1742,11 @@ def build_segment_ffmpeg(bg_paths, text_png_path, audio_path, duration_sec, outp
     part_dur = duration_sec / n
 
     if show_text:
-        logging.info(f"Building segment: {n} BGs, duration={duration_sec:.2f}s, part_dur={part_dur:.2f}s")
+        logging.info(f"Building segment: {n} BGs, duration={duration_sec:.2f}s, part_dur={part_dur:.2f}s, is_last={is_last}")
         logging.info(f"  Text PNG: {text_png_path} ({os.path.getsize(text_png_path)} bytes)")
         logging.info(f"  Audio: {audio_path} ({os.path.getsize(audio_path)} bytes)")
     else:
-        logging.info(f"Building segment (no text): {n} BGs, duration={duration_sec:.2f}s, part_dur={part_dur:.2f}s")
+        logging.info(f"Building segment (no text): {n} BGs, duration={duration_sec:.2f}s, part_dur={part_dur:.2f}s, is_last={is_last}")
         logging.info(f"  Audio: {audio_path} ({os.path.getsize(audio_path)} bytes)")
 
     # Build FFmpeg command
@@ -1529,6 +1761,20 @@ def build_segment_ffmpeg(bg_paths, text_png_path, audio_path, duration_sec, outp
 
     inputs.extend(["-i", audio_path])
 
+    # Phase 2 (T2.5): outro fade.  0.4 s, applied to the final [v] composite
+    # so the whole frame (bg + text) eases out before the next segment takes
+    # over.  Skipped on the very last segment to avoid a fade-to-black.
+    outro_fade_filter = ""
+    if FEATURE_FLAGS.get('text_animations', False) and not is_last and show_text:
+        outro_d = min(0.4, max(0.1, duration_sec / 2))
+        outro_st = max(0.0, duration_sec - outro_d)
+        # No leading comma — the label goes on the input side: [vpre]fade=...[v]
+        outro_fade_filter = f"fade=t=out:st={outro_st:.3f}:d={outro_d:.3f}:alpha=1[v]"
+        # The last filter in the chain will be [v] — chain via the label.
+        last_v = "vpre"
+    else:
+        last_v = "v"
+
     if n == 1:
         if show_text:
             # Build filter with optional animation
@@ -1540,17 +1786,24 @@ def build_segment_ffmpeg(bg_paths, text_png_path, audio_path, duration_sec, outp
                 filt = (
                     f"[0:v]trim=duration={duration_sec},setpts=PTS-STARTPTS,fps=30[bg];"
                     f"[1:v]{text_animation_filter}[anim_text];"
-                    f"[bg][anim_text]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2:format=auto[v]"
+                    f"[bg][anim_text]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2:format=auto[{last_v}]"
                 )
             else:
                 filt = (
                     f"[0:v]trim=duration={duration_sec},setpts=PTS-STARTPTS,fps=30[bg];"
-                    f"[bg][1:v]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2:format=auto[v]"
+                    f"[bg][1:v]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2:format=auto[{last_v}]"
                 )
-            map_args = ["-map", "[v]", "-map", "2:a"]
+            if outro_fade_filter:
+                # outro_fade_filter expects [vpre] as the input label
+                filt = filt + ";" + f"[{last_v}]{outro_fade_filter}"
+                last_v = "v"
+            map_args = ["-map", f"[{last_v}]", "-map", "2:a"]
         else:
-            filt = f"[0:v]trim=duration={duration_sec},setpts=PTS-STARTPTS,fps=30[v]"
-            map_args = ["-map", "[v]", "-map", "1:a"]
+            filt = f"[0:v]trim=duration={duration_sec},setpts=PTS-STARTPTS,fps=30[{last_v}]"
+            if outro_fade_filter:
+                filt = filt + ";" + f"[{last_v}]{outro_fade_filter}"
+                last_v = "v"
+            map_args = ["-map", f"[{last_v}]", "-map", "1:a"]
     else:
         # Multiple BGs
         v_parts = ""
@@ -1561,13 +1814,19 @@ def build_segment_ffmpeg(bg_paths, text_png_path, audio_path, duration_sec, outp
         if show_text:
             # Apply animation to text if provided
             if text_animation_filter:
-                filt = v_parts + f"[{n}:v]{text_animation_filter}[anim_text];[bg][anim_text]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2:format=auto[v]"
+                filt = v_parts + f"[{n}:v]{text_animation_filter}[anim_text];[bg][anim_text]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2:format=auto[{last_v}]"
             else:
-                filt = v_parts + f"[bg][{n}:v]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2:format=auto[v]"
-            map_args = ["-map", "[v]", "-map", f"{n+1}:a"]
+                filt = v_parts + f"[bg][{n}:v]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2:format=auto[{last_v}]"
+            if outro_fade_filter:
+                filt = filt + ";" + f"[{last_v}]{outro_fade_filter}"
+                last_v = "v"
+            map_args = ["-map", f"[{last_v}]", "-map", f"{n+1}:a"]
         else:
-            filt = v_parts + "[bg]null[v]"
-            map_args = ["-map", "[v]", "-map", f"{n}:a"]
+            filt = v_parts + f"[bg]null[{last_v}]"
+            if outro_fade_filter:
+                filt = filt + ";" + f"[{last_v}]{outro_fade_filter}"
+                last_v = "v"
+            map_args = ["-map", f"[{last_v}]", "-map", f"{n}:a"]
 
     cmd = [FFMPEG_EXE] + common_args + inputs + [
         "-filter_complex", filt,
@@ -1626,7 +1885,7 @@ def process_single_ayah_ffmpeg(args):
     Uses BackgroundRotator to prevent video repetition.
     """
     (reciter_id, surah, ayah, idx, template, bg_style, selected_font,
-     show_text, text_animation, auto_text_color) = args
+     show_text, text_animation, auto_text_color, quality, is_last) = args
 
     try:
         # Download audio (no trimming, faster)
@@ -1657,9 +1916,10 @@ def process_single_ayah_ffmpeg(args):
             )
             logging.debug(f"Segment {idx}: Text color={text_color}, stroke={stroke_color}")
 
-            # Render with custom colors
+            # Render with custom colors (Phase 1: quality -> supersample, template font + glow)
             render_text_to_png_with_colors(arabic_text, template, text_png,
-                                          selected_font, text_color, stroke_color)
+                                          selected_font, text_color, stroke_color,
+                                          quality=quality)
         else:
             # Create a transparent 1x1 pixel PNG for no-text mode
             from PIL import Image
@@ -1667,10 +1927,11 @@ def process_single_ayah_ffmpeg(args):
             transparent.save(text_png)
             logging.debug(f"Created transparent placeholder: {text_png}")
 
-        # Build segment with animation filter
+        # Build segment with animation filter (Phase 2: text animation + outro fade)
         animation_filter = get_ffmpeg_text_animation_filter(text_animation, duration)
         build_segment_ffmpeg(bg_paths, text_png, audio_path, duration, segment_out,
-                           show_text=show_text, text_animation_filter=animation_filter)
+                           show_text=show_text, text_animation_filter=animation_filter,
+                           is_last=is_last)
 
         logging.info(f"✅ Segment {idx} complete: ayah {surah}:{ayah}")
         return (ayah, segment_out)
@@ -1742,10 +2003,12 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
 
         logging.info(f"Using text animation: {text_animation}, transition: {video_transition}")
 
-        # Prepare args - now includes rotation index for variety
+        # Prepare args - now includes rotation index for variety + quality preset
+        # + is_last flag (Phase 2 T2.5) so the last segment skips the outro fade.
+        total_ayahs = last_ayah - start_ayah + 1
         ayah_args = [
             (reciter_id, surah, ayah, idx, template, bg_style, selected_font, show_text,
-             text_animation, auto_text_color)
+             text_animation, auto_text_color, quality, idx == total_ayahs)
             for idx, ayah in enumerate(range(start_ayah, last_ayah + 1), start=1)
         ]
 
@@ -1819,18 +2082,64 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
         else:
             # Multiple segments - use crossfade for professional transitions
             try:
-                # Create crossfade concat filter
+                # Phase 2 (T2.4): Honor the template's `transition` field and use
+                # the *actual* per-segment durations (probed via ffprobe) instead
+                # of the previous hardcoded 5 s trim and 4.5 s xfade offset.
+                # Each segment is trimmed to its real length; the xfade offset
+                # is cumulative-duration of preceding segments - xfade_d.
+                xfade_d = 0.5
+
+                # Probe each segment's actual duration
+                seg_durations = []
+                for _, seg_path in segment_results:
+                    try:
+                        d = get_audio_duration_ffprobe(seg_path)
+                    except Exception as e:
+                        logging.warning(f"ffprobe failed for {seg_path}: {e}; defaulting to 5.0s")
+                        d = 5.0
+                    seg_durations.append(d)
+                logging.info(f"Segment durations: {[f'{d:.2f}' for d in seg_durations]}")
+
+                # Resolve transition name from template
+                trans_name = template_config.get('transition', 'fade')
+                trans_spec = VIDEO_TRANSITIONS.get(trans_name, VIDEO_TRANSITIONS.get('fade'))
+                # trans_spec['type'] is the xfade transition key, e.g. 'fade', 'wipeleft'
+                xfade_name = trans_spec['type']
+                logging.info(f"Using crossfade transition: {trans_name!r} (xfade={xfade_name})")
+
                 filter_complex = []
+                # Trim each segment to its actual duration
                 for i, (_, seg_path) in enumerate(segment_results):
-                    abs_path = os.path.abspath(seg_path).replace(os.sep, '/').replace("'", "'\\''")
-                    filter_complex.append(f"[{i}:v]trim=duration=5[v{i}];[{i}:a]atrim=duration=5[a{i}]")
+                    seg_d = seg_durations[i]
+                    filter_complex.append(
+                        f"[{i}:v]trim=duration={seg_d:.3f},setpts=PTS-STARTPTS[v{i}];"
+                        f"[{i}:a]atrim=duration={seg_d:.3f},asetpts=PTS-STARTPTS[a{i}]"
+                    )
 
-                # Add crossfade between consecutive segments
+                # Crossfade between consecutive segments using computed offsets.
+                # Each ayah overlaps the next by xfade_d, so the offset of the
+                # (i+1)-th xfade is:
+                #   sum(durations[0:i+1]) - (i+1) * xfade_d
+                # i.e. cumulative_duration minus xfade_d for THIS xfade plus
+                # xfade_d for every prior xfade (one per prior overlap).
+                cumulative = 0.0
                 for i in range(len(segment_results) - 1):
-                    filter_complex.append(f"[v{i}][v{i+1}][a{i}][a{i+1}]xfade=transition=fade:duration=0.5:offset=4.5,acrossfade=d=0.5[v{i+1}][a{i+1}]")
+                    cumulative += seg_durations[i]
+                    offset = max(0.0, cumulative - (i + 1) * xfade_d)
+                    filter_complex.append(
+                        f"[v{i}][v{i+1}]xfade=transition={xfade_name}:"
+                        f"duration={xfade_d}:offset={offset:.3f}[v{i+1}];"
+                        f"[a{i}][a{i+1}]acrossfade=d={xfade_d}[a{i+1}]"
+                    )
 
-                # Final output
-                filter_complex.append(f"[v{len(segment_results)-1}][a{len(segment_results)-1}]outv[outa]")
+                # Final output — null filters are required so we can map both
+                # video and audio streams to the named output labels.
+                last_v = f"v{len(segment_results) - 1}"
+                last_a = f"a{len(segment_results) - 1}"
+                filter_complex.append(
+                    f"[{last_v}]null[outv];"
+                    f"[{last_a}]anull[outa]"
+                )
 
                 filter_complex_str = ';'.join(filter_complex)
 

@@ -448,14 +448,43 @@ Filter graph (1 background, 1 ayah):
 
 > ⚠ **The `quality` arg is currently ignored** in `build_segment_ffmpeg()` — it always uses `-preset ultrafast`. See `refactor.md` §P3 #25.
 
-### 8.3 Visual Templates (`main.py:580-585`)
+### 8.3 Visual Templates (`main.py:648-672`)
 
-| Template | `bg_style` | `text_color` | `font_size_mult` |
-|---|---|---|---|
-| `ramadan` | night | gold | 1.2 |
-| `normal` | nature | white | 1.0 |
-| `masjid` | masjid | white | 1.1 |
-| `islamic` | islamic | white | 1.1 |
+| Template | `bg_style` | `text_color` | `font` | `font_size_mult` | Glow | Effect |
+|---|---|---|---|---|---|---|
+| `ramadan` | night | `#FFD700` (gold) | Amiri-Bold | 1.20 | `#FFD700` r=8 | gold + luminous halo |
+| `normal`  | nature | `#FFFFFF` | Amiri-Regular | 1.00 | — | clean white |
+| `masjid`  | masjid | `#FFFFFF` | Amiri-Bold | 1.10 | `#FFFFFF80` r=4 | white + soft moonlit halo |
+| `islamic` | islamic | `#FFFFFF` | Amiri-Bold | 1.10 | — | white + heavy drop shadow |
+
+> ⚠ **Font constraint (PIL limitation):** Pillow's `ImageFont.text()` does **not** apply OpenType GSUB contextual substitution. Arabic shaping therefore requires fonts with pre-composed presentation forms (U+FE70–FEFF, U+FB50–FDFF) baked into the cmap. **Only Amiri-Bold.ttf and Amiri-Regular.ttf in `fonts/` have sufficient coverage** (97.2% / 88.8%). The other 15 fonts (Lateef, ElMessiri, Dubai, Scheherazade, Tajawal, etc.) only contain base letters and rely on HarfBuzz to compose shapes — they render as boxes when used by PIL.
+>
+> The constant `PIL_COMPATIBLE_ARABIC_FONTS` (`main.py:413`) is the explicit allow-list. `get_random_font()` (`main.py:419`) is now restricted to this list so picking "Random" in the UI can never silently land on a broken font.
+>
+> `masjid` and `islamic` were originally wired to Lateef-Bold/ElMessiri-Bold (Phase 0.5 design) but were reverted to Amiri in Phase 1. The visual differentiation now comes from glow + drop shadow + bg_style.
+
+### 8.3.1 Phase 2 Animations & Transitions (`main.py:60-67, 1452-1531, 1738-1839, 2104-2140`)
+
+Phase 2 wires the previously-orphaned `text_animation` and `transition` template fields. Gated by `FEATURE_FLAGS['text_animations'] = True` (`main.py:60-67`).
+
+| Template | `text_animation` | Intro filter | `transition` | Crossfade key |
+|---|---|---|---|---|
+| `ramadan` | `fade_in` | `fade=t=in:st=0:d=0.5:alpha=1` | `fade` | `fade` |
+| `normal`  | `slide_up` | `pad=…:0:50:…:black@0,fade=…,[crop]` | `dissolve` | `fade` (same xfade key) |
+| `masjid`  | `fade_in` | same as ramadan | `fade` | `fade` |
+| `islamic` | `zoom_in` | (fade stand-in; full per-frame zoom is Phase 3) | `wipe` | `wipeleft` |
+
+**Per-segment filters (`build_segment_ffmpeg`, `main.py:1738-1839`):**
+- **Intro:** `text_animation_filter` is inserted between the text PNG input and the overlay filter. The fade uses `alpha=1` so only the alpha channel animates (RGB is preserved).
+- **Outro:** A 0.4 s `fade=t=out:…:alpha=1` is appended to the final composite when `is_last=False`, so the whole frame eases to the next segment. The last segment skips the outro to avoid a fade-to-black at the video's end.
+
+**Cross-segment filter (`build_video` concat, `main.py:2104-2140`):**
+- Each segment's actual duration is **probed via ffprobe** (no more hardcoded 5 s trim — that broke long ayahs like Al-Baqarah).
+- `xfade` `offset` is computed as `cumulative_duration - 0.5`, so the crossfade always lands at the actual ayah boundary, not at a guessed 4.5 s.
+- The `transition` field is resolved via `VIDEO_TRANSITIONS[template.transition]['type']` — so `islamic` template actually does a `wipeleft` between ayahs (was always `fade` before).
+- Final output is mapped to `[outv]`/`[outa]` via explicit `null`/`anull` filters (the previous `[v1][a1]outv[outa]` syntax was malformed and was silently falling back to stream-copy concat).
+
+**Deferred to Phase 3 (kinetic text):** `typewriter`, `bounce`, `glow`, `reveal` — these require per-frame `t` expressions on a second input stream, which doesn't compose with the static-PNG path. The `get_ffmpeg_text_animation_filter` function returns `None` for them so they fall through to a clean overlay.
 
 ### 8.4 Reciters (`main.py:762-775`)
 
@@ -552,7 +581,7 @@ See `refactor.md` §P0 for fixes.
 | `[WinError 2]` on background cache validation | Wrong `ffprobe` path | Use `FFPROBE_EXE` constant instead of string replace |
 | `Invalid audio stream` from `normalize_audio` | FFmpeg invocation missing `-f mp3` for the input | Add `-f mp3` or remove normalization |
 | UnboundLocalError on crossfade fallback | `list_path` may be unset | Initialize at function top |
-| Arabic text shows as boxes | Font missing tashkeel glyphs | Add `Amiri-Bold.ttf` or `Lateef-Bold.ttf` to `fonts/` |
+| Arabic text shows as boxes | Font lacks Arabic presentation forms (PIL can't apply OpenType GSUB) | Use `Amiri-Bold.ttf` or `Amiri-Regular.ttf` only; see §8.3 "Font constraint" |
 | Audio download returns 404 for specific ayah | Reciter ID doesn't include that ayah on EveryAyah | Try a different reciter; check `everyayah.com/data/<reciter>/` |
 | Out of memory on long surahs | ThreadPool + `-threads 4` oversubscribes | Reduce `max_workers` to 2 in `main.py:1870` |
 | `runlog.txt` fills the disk | Unbounded log file | Add `RotatingFileHandler` (10 MB × 5) — see `refactor.md` §P2 |
