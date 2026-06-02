@@ -26,6 +26,34 @@ from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 
 # =============================================================================
+# Refactor P1-1 (scoped split): leaf modules extracted from this file.
+# Re-exported at module level below so existing ``import main; main.X``
+# callers and ``from main import X`` keep working unchanged.
+# =============================================================================
+from quran_reels.config import (
+    FEATURE_FLAGS,
+    QUALITY_PRESETS,
+    OUTPUT_FORMATS,
+    TEMPLATES,
+    VIDEO_TRANSITIONS,
+    VERSE_COUNTS,
+    SURAH_NAMES,
+    RECITERS_MAP,
+)
+from quran_reels.services.contrast import (
+    analyze_background_brightness,
+    get_contrasting_text_color,
+)
+from quran_reels.services.animation import get_ffmpeg_text_animation_filter
+from quran_reels.services.background import (
+    BackgroundRotator,
+    bg_rotator,
+    init_background_rotator,
+    get_next_background,
+)
+from quran_reels.utils.progress import current_progress
+
+# =============================================================================
 # STEP 1: PATH RESOLUTION & DIRECTORY SETUP
 # =============================================================================
 
@@ -58,23 +86,6 @@ logging.getLogger().addHandler(console_handler)
 logging.info("--- Quran Reels Generator (Refactored) ---")
 logging.info(f"Exec Dir: {EXEC_DIR}")
 logging.info(f"Bundle Dir: {BUNDLE_DIR}")
-
-# =============================================================================
-# STEP 2b: FEATURE FLAGS  (animations.md §12)
-# =============================================================================
-# Gates each phase of the animations plan so behavior changes are opt-in.
-#   - font_polish:     Phase 1 (always on, already shipped)
-#   - text_animations: Phase 2 (intro/outro fades, slide/zoom on text)
-#   - kinetic_text:    Phase 3 (per-word reveal — opt-in, not yet implemented)
-#   - forced_alignment: Phase 3 v3 (per-word word-by-word forced alignment)
-# =============================================================================
-
-FEATURE_FLAGS = {
-    'font_polish':        True,
-    'text_animations':    True,
-    'kinetic_text':       False,
-    'forced_alignment':   False,
-}
 
 # =============================================================================
 # STEP 3: TEMPORARY DIRECTORY MANAGEMENT (NEW: replaces static audio folder)
@@ -156,22 +167,6 @@ def cleanup_temp():
     except:
         pass
 
-# Also cleanup after each video generation
-def cleanup_after_video():
-    """Clean temp files after video completion"""
-    try:
-        if os.path.exists(TEMP_DIR):
-            # Keep directory but remove contents
-            for item in os.listdir(TEMP_DIR):
-                item_path = os.path.join(TEMP_DIR, item)
-                if os.path.isfile(item_path):
-                    os.remove(item_path)
-                elif os.path.isdir(item_path):
-                    shutil.rmtree(item_path, ignore_errors=True)
-            logging.debug("Temp files cleaned after video")
-    except Exception as e:
-        logging.warning(f"Failed to cleanup temp files: {e}")
-
 # Cleanup orphaned temp files on startup
 def cleanup_orphaned_temp_files():
     """Clean temp files that might be left from previous crashes"""
@@ -198,47 +193,23 @@ def cleanup_orphaned_temp_files():
 atexit.register(cleanup_temp)
 
 # =============================================================================
-# STEP 4: FIND BINARIES (FFMPEG, ImageMagick)
+# STEP 4: FIND BINARIES (FFMPEG, FFprobe)
 # =============================================================================
-
-def is_image_magick(path):
-    if not path or not os.path.isfile(path):
-        return False
-    if "System32" in path and "convert.exe" in path.lower():
-        return False
-    try:
-        res = subprocess.run([path, "-version"], capture_output=True, text=True, timeout=2)
-        return "ImageMagick" in res.stdout or "ImageMagick" in res.stderr
-    except:
-        return False
+# ImageMagick was previously probed here (is_image_magick, IM_MAGICK_EXE,
+# IM_HOME) but every consumer of those names was removed in earlier
+# refactors.  The pure-FFmpeg pipeline doesn't need ImageMagick.
 
 def find_binary(portable_path, system_name):
     if os.path.isfile(portable_path):
-        if system_name in ["magick", "convert"] and not is_image_magick(portable_path):
-            pass
-        else:
-            return portable_path
-    system_path = shutil.which(system_name)
-    if system_path:
-        if system_name in ["magick", "convert"]:
-            if is_image_magick(system_path):
-                return system_path
-        else:
-            return system_path
-    return None
+        return portable_path
+    return shutil.which(system_name)
 
 FFMPEG_EXE = find_binary(os.path.join(BUNDLE_DIR, "bin", "ffmpeg", "ffmpeg.exe"), "ffmpeg")
-IM_MAGICK_EXE = find_binary(os.path.join(BUNDLE_DIR, "bin", "imagemagick", "magick.exe"), "magick")
-if not IM_MAGICK_EXE:
-    IM_MAGICK_EXE = find_binary(os.path.join(BUNDLE_DIR, "bin", "imagemagick", "convert.exe"), "convert")
-
 FFPROBE_EXE = find_binary(os.path.join(BUNDLE_DIR, "bin", "ffmpeg", "ffprobe.exe"), "ffprobe")
 if not FFPROBE_EXE and FFMPEG_EXE:
     prob_path = os.path.join(os.path.dirname(FFMPEG_EXE), "ffprobe.exe")
     if os.path.isfile(prob_path): FFPROBE_EXE = prob_path
     else: FFPROBE_EXE = shutil.which("ffprobe")
-
-IM_HOME = os.path.join(BUNDLE_DIR, "bin", "imagemagick")
 
 VISION_DIR = os.path.join(BUNDLE_DIR, "vision")
 UI_PATH = os.path.join(BUNDLE_DIR, "UI.html")
@@ -656,344 +627,73 @@ def render_arabic_to_pil_image(text, fontsize=80, color='#FFFFFF',
     return img
 
 # =============================================================================
-# STEP 8: CONSTANTS & CONFIGURATION
+# STEP 8: CONSTANTS & CONFIGURATION  (refactored — see quran_reels.config)
 # =============================================================================
-
+# TEMPLATES, QUALITY_PRESETS, OUTPUT_FORMATS, RECITERS_MAP, VERSE_COUNTS,
+# SURAH_NAMES, VIDEO_TRANSITIONS, FEATURE_FLAGS, and the BackgroundRotator
+# class are all imported from quran_reels.* at the top of this file.
 TARGET_W = 1080
 TARGET_H = 1920
-USE_FFMPEG_PIPELINE = True
-
-QUALITY_PRESETS = {
-    'low': {'fps': 24, 'codec': 'libx264', 'preset': 'ultrafast', 'bitrate': '4M'},
-    'medium': {'fps': 30, 'codec': 'libx264', 'preset': 'fast', 'bitrate': '8M'},
-    'high': {'fps': 30, 'codec': 'libx264', 'preset': 'fast', 'bitrate': '12M'}
-}
-
-OUTPUT_FORMATS = {
-    'reels': {'size': (1080, 1920), 'duration': 600}, # 10 mins
-    'story': {'size': (1080, 1920), 'duration': 60},  # 1 min
-    'post': {'size': (1080, 1080), 'duration': 600}  # 10 mins
-}
-
-TEMPLATES = {
-    'ramadan': {
-        'bg_style': 'night', 'text_color': '#FFD700', 'font_size_mult': 1.20,
-        'text_animation': 'fade_in', 'transition': 'fade',
-        'font': 'Amiri-Bold.ttf', 'glow_color': '#FFD700', 'glow_radius': 8,
-    },
-    'normal':  {
-        'bg_style': 'nature', 'text_color': '#FFFFFF', 'font_size_mult': 1.00,
-        'text_animation': 'slide_up', 'transition': 'dissolve',
-        'font': 'Amiri-Regular.ttf',
-    },
-    'masjid':  {
-        # Soft white halo evokes moonlit calligraphy on the mosque wall.
-        # Note: must use Amiri — Lateef/ElMessiri lack presentation forms and
-        # PIL does not apply OpenType GSUB contextual substitution.
-        'bg_style': 'masjid', 'text_color': '#FFFFFF', 'font_size_mult': 1.10,
-        'text_animation': 'fade_in', 'transition': 'fade',
-        'font': 'Amiri-Bold.ttf', 'glow_color': '#FFFFFF80', 'glow_radius': 4,
-    },
-    'islamic': {
-        # Heavier drop shadow gives the calligraphic depth of manuscript art.
-        'bg_style': 'islamic', 'text_color': '#FFFFFF', 'font_size_mult': 1.10,
-        'text_animation': 'zoom_in', 'transition': 'wipe',
-        'font': 'Amiri-Bold.ttf',
-    },
-}
-
-# Animation & Transitions Configuration
-TEXT_ANIMATIONS = {
-    'fade_in': {'type': 'fade', 'duration': 0.5, 'direction': 'in', 'frames': 15},
-    'slide_up': {'type': 'slide', 'duration': 0.5, 'direction': 'up', 'distance': 50},
-    'slide_down': {'type': 'slide', 'duration': 0.5, 'direction': 'down', 'distance': 50},
-    'slide_left': {'type': 'slide', 'duration': 0.5, 'direction': 'left', 'distance': 50},
-    'slide_right': {'type': 'slide', 'duration': 0.5, 'direction': 'right', 'distance': 50},
-    'zoom_in': {'type': 'zoom', 'duration': 0.5, 'start_scale': 0.8, 'end_scale': 1.0},
-    'typewriter': {'type': 'typewriter', 'duration': 0.03, 'char_delay': 1},  # per character
-    'reveal': {'type': 'reveal', 'duration': 0.5, 'direction': 'left'},
-    'glow': {'type': 'glow', 'duration': 0.5, 'glow_intensity': 1.5},
-    'bounce': {'type': 'bounce', 'duration': 0.6, 'bounces': 3},
-}
-
-VIDEO_TRANSITIONS = {
-    'fade': {'type': 'fade', 'duration': 0.5, 'ffmpeg_filter': 'fade=out:st={duration}:d={duration}'},
-    'dissolve': {'type': 'dissolve', 'duration': 0.5, 'ffmpeg_filter': 'xfade=transition=fade:duration={duration}'},
-    'wipe': {'type': 'wipe', 'duration': 0.5, 'direction': 'right', 'ffmpeg_filter': 'xfade=transition=wipeleft:duration={duration}'},
-    'slide': {'type': 'slide', 'duration': 0.5, 'direction': 'left', 'ffmpeg_filter': 'xfade=transition=slideleft:duration={duration}'},
-    'cross_zoom': {'type': 'zoom', 'duration': 0.5, 'ffmpeg_filter': 'xfade=transition=zoomin:duration={duration}'},
-    'pixelate': {'type': 'pixelate', 'duration': 0.5, 'ffmpeg_filter': 'xfade=transition=pixelize:duration={duration}'},
-}
-
-# Background Rotation Manager - Prevents video repetition
-class BackgroundRotator:
-    """Manages background video rotation to prevent repetition per video generation"""
-    def __init__(self, style='nature'):
-        self.style = style
-        self.used_backgrounds = set()
-        self.available = self._load_backgrounds()
-        self.current_index = 0
-        self.usage_history = []  # Track usage across sessions
-        self.min_distance = 3    # Minimum distance between repeats
-
-    def _load_backgrounds(self):
-        """Load available backgrounds for the style"""
-        style_dir = os.path.join(VISION_DIR, self.style)
-        if os.path.isdir(style_dir):
-            files = [f for f in os.listdir(style_dir) if f.endswith('.mp4')]
-            return [os.path.join(style_dir, f) for f in files]
-        else:
-            # Fallback to pattern-based in main vision folder
-            pattern = f"{self.style}_part"
-            files = [f for f in os.listdir(VISION_DIR)
-                    if f.startswith(pattern) and f.endswith('.mp4')]
-            return [os.path.join(VISION_DIR, f) for f in files]
-
-    def get_next(self, count=1):
-        """Get next background(s) ensuring variety with smart rotation"""
-        if not self.available:
-            raise ValueError(f"No backgrounds found for style: {self.style}")
-
-        if count == 1:
-            # Smart selection with minimum distance
-            candidates = []
-
-            # First, try unused backgrounds
-            unused = [b for b in self.available if b not in self.used_backgrounds]
-            if unused:
-                candidates = unused
-            else:
-                # If all used, reset and prioritize least recently used
-                self.used_backgrounds.clear()
-                # Sort by last usage time
-                candidates = sorted(self.available,
-                                 key=lambda x: self._get_last_usage_time(x))
-
-            if candidates:
-                # Weighted random selection - prefer less used backgrounds
-                weights = []
-                for bg in candidates:
-                    usage_count = self._get_usage_count(bg)
-                    # Lower usage count = higher weight
-                    weight = 1.0 / (usage_count + 1)
-                    weights.append(weight)
-
-                # Normalize weights
-                total_weight = sum(weights)
-                if total_weight > 0:
-                    weights = [w / total_weight for w in weights]
-                    selected = random.choices(candidates, weights=weights)[0]
-                else:
-                    selected = random.choice(candidates)
-
-                self.used_backgrounds.add(selected)
-                self._record_usage(selected)
-                return selected
-            else:
-                # Fallback to random if no candidates
-                selected = random.choice(self.available)
-                self.used_backgrounds.add(selected)
-                self._record_usage(selected)
-                return selected
-
-        else:
-            # Get multiple unique backgrounds
-            selected = []
-            available_copy = self.available.copy()
-
-            for _ in range(min(count, len(self.available))):
-                if not available_copy:
-                    break
-
-                # Similar logic for multiple selection
-                unused = [b for b in available_copy if b not in self.used_backgrounds]
-                if unused:
-                    candidates = unused
-                else:
-                    candidates = sorted(available_copy,
-                                     key=lambda x: self._get_last_usage_time(x))
-
-                if candidates:
-                    bg = candidates[0]  # Take the best candidate
-                    selected.append(bg)
-                    self.used_backgrounds.add(bg)
-                    self._record_usage(bg)
-                    available_copy.remove(bg)
-                else:
-                    break
-
-            return selected
-
-    def _get_usage_count(self, bg_path):
-        """Get how many times this background was used"""
-        return sum(1 for entry in self.usage_history if entry == bg_path)
-
-    def _get_last_usage_time(self, bg_path):
-        """Get last usage time (0 if never used)"""
-        for i in reversed(range(len(self.usage_history))):
-            if self.usage_history[i] == bg_path:
-                return i
-        return 0
-
-    def _record_usage(self, bg_path):
-        """Record background usage"""
-        self.usage_history.append(bg_path)
-        # Keep history manageable
-        if len(self.usage_history) > 100:
-            self.usage_history = self.usage_history[-50:]
-
-    def reset(self):
-        """Reset rotation for new video generation"""
-        self.used_backgrounds.clear()
-        self.current_index = 0
-
-VERSE_COUNTS = {
-    1: 7, 2: 286, 3: 200, 4: 176, 5: 120, 6: 165, 7: 206, 8: 75, 9: 129, 10: 109,
-    11: 123, 12: 111, 13: 43, 14: 52, 15: 99, 16: 128, 17: 111, 18: 110, 19: 98, 20: 135,
-    21: 112, 22: 78, 23: 118, 24: 64, 25: 77, 26: 227, 27: 93, 28: 88, 29: 69, 30: 60,
-    31: 34, 32: 30, 33: 73, 34: 54, 35: 45, 36: 83, 37: 182, 38: 88, 39: 75, 40: 85,
-    41: 54, 42: 53, 43: 89, 44: 59, 45: 37, 46: 35, 47: 38, 48: 29, 49: 18, 50: 45,
-    51: 60, 52: 49, 53: 62, 54: 55, 55: 78, 56: 96, 57: 29, 58: 22, 59: 24, 60: 13,
-    61: 14, 62: 11, 63: 11, 64: 18, 65: 12, 66: 12, 67: 30, 68: 52, 69: 52, 70: 44,
-    71: 28, 72: 28, 73: 20, 74: 56, 75: 40, 76: 31, 77: 50, 78: 40, 79: 46, 80: 42,
-    81: 29, 82: 19, 83: 36, 84: 25, 85: 22, 86: 17, 87: 19, 88: 26, 89: 30, 90: 20,
-    91: 15, 92: 21, 93: 11, 94: 8, 95: 8, 96: 19, 97: 5, 98: 8, 99: 8, 100: 11,
-    101: 11, 102: 8, 103: 3, 104: 9, 105: 5, 106: 4, 107: 7, 108: 3, 109: 6, 110: 3,
-    111: 5, 112: 4, 113: 5, 114: 6
-}
-
-SURAH_NAMES = [
-    'الفاتحة', 'البقرة', 'آل عمران', 'النساء', 'المائدة', 'الأنعام', 'الأعراف', 'الأنفال', 'التوبة', 'يونس',
-    'هود', 'يوسف', 'الرعد', 'إبراهيم', 'الحجر', 'النحل', 'الإسراء', 'الكهف', 'مريم', 'طه',
-    'الأنبياء', 'الحج', 'المؤمنون', 'النور', 'الفرقان', 'الشعراء', 'النمل', 'القصص', 'العنكبوت', 'الروم',
-    'لقمان', 'السجدة', 'الأحزاب', 'سبأ', 'فاطر', 'يس', 'الصافات', 'ص', 'الزمر', 'غافر',
-    'فصلت', 'الشورى', 'الزخرف', 'الدخان', 'الجاثية', 'الأحقاف', 'محمد', 'الفتح', 'الحجرات', 'ق',
-    'الذاريات', 'الطور', 'النجم', 'القمر', 'الرحمن', 'الواقعة', 'الحديد', 'المجادلة', 'الحشر', 'الممتحنة',
-    'الصف', 'الجمعة', 'المنافقون', 'التغابن', 'الطلاق', 'التحريم', 'الملك', 'القلم', 'الحاقة', 'المعارج',
-    'نوح', 'الجن', 'المزمل', 'المدثر', 'القيامة', 'الإنسان', 'المرسلات', 'النبأ', 'النازعات', 'عبس',
-    'التكوير', 'الانفطار', 'المطففين', 'الانشقاق', 'البروج', 'الطارق', 'الأعلى', 'الغاشية', 'الفجر', 'البلد',
-    'الشمس', 'الليل', 'الضحى', 'الشرح', 'التين', 'العلق', 'القدر', 'البينة', 'الزلزلة', 'العاديات',
-    'القارعة', 'التكاثر', 'العصر', 'الهمزة', 'الفيل', 'قريش', 'الماعون', 'الكوثر', 'الكافرون', 'النصر',
-    'المسد', 'الإخلاص', 'الفلق', 'الناس'
-]
-
-RECITERS_MAP = {
-    'الشيخ عبدالباسط عبدالصمد': 'AbdulSamad_64kbps_QuranExplorer.Com',
-    'الشيخ عبدالباسط عبدالصمد (مرتل)': 'Abdul_Basit_Murattal_64kbps',
-    'الشيخ عبدالرحمن السديس': 'Abdurrahmaan_As-Sudais_64kbps',
-    'الشيخ محمد صديق المنشاوي (مجود)': 'Minshawy_Mujawwad_64kbps',
-    'الشيخ سعود الشريم': 'Saood_ash-Shuraym_64kbps',
-    'الشيخ محمود خليل الحصري': 'Husary_64kbps',
-    'الشيخ محمود علي البنا': 'mahmoud_ali_al_banna_32kbps',
-    'الشيخ عبدالباسط عبدالصمد (مجود)': 'Abdul_Basit_Mujawwad_128kbps',
-    'الشيخ أحمد نعينع': 'Ahmed_Neana_128kbps',
-    'الشيخ علي جابر': 'Ali_Jaber_64kbps',
-    'الشيخ محمد الطبلاوي': 'Mohammad_al_Tablaway_128kbps',
-    'الشيخ مصطفى إسماعيل': 'Mustafa_Ismail_48kbps',
-}
-
-# =============================================================================
-# STEP 9: PYTHON 3.13 COMPATIBILITY (MUST BE BEFORE PYDUB IMPORT)
-# =============================================================================
-
-if sys.version_info >= (3, 13):
-    try:
-        import audioop
-    except ImportError:
-        # Apply patch before importing pydub
-        import audioop_patch
-        sys.modules['audioop'] = audioop_patch
-        sys.modules['pyaudioop'] = audioop_patch
-        logging.info("Applied Python 3.13 audioop compatibility patch")
 
 # =============================================================================
 # STEP 10: IMPORTS FOR VIDEO PROCESSING
 # =============================================================================
+# (STEP 9 — Python 3.13 audioop compatibility patch — was deleted with
+# the pydub removal in refactor P1-3.  Pydub was the only consumer of the
+# ``audioop`` shim; without pydub the patch is dead.  ``audioop_patch.py``
+# is left on disk in case a future dependency reintroduces the need.)
 
 import numpy as np
 import requests as http_requests
 from urllib3.util.retry import Retry
 from urllib3 import disable_warnings
 disable_warnings()  # Disable SSL warnings
-from pydub import AudioSegment
 import shutil
 
 if FFMPEG_EXE:
     logging.info(f"Using FFmpeg: {FFMPEG_EXE}")
     os.environ["FFMPEG_BINARY"] = FFMPEG_EXE
     os.environ["IMAGEIO_FFMPEG_EXE"] = FFMPEG_EXE
-    AudioSegment.converter = FFMPEG_EXE
-    AudioSegment.ffmpeg = FFMPEG_EXE
-    AudioSegment.ffprobe = FFPROBE_EXE or "ffprobe"
 else:
     raise RuntimeError("FFmpeg not found - video processing requires FFmpeg")
-
-# MoviePy imports removed - using direct FFmpeg for performance
 
 # =============================================================================
 # STEP 10: GLOBAL PROGRESS TRACKING & FLASK APP
 # =============================================================================
-# Enhanced Progress Tracking System
-current_progress = {
-    'percent': 0,
-    'status': 'جاري التحضير...',
-    'log': [],
-    'is_running': False,
-    'is_complete': False,
-    'output_path': None,
-    'error': None,
-    'current_ayah': 0,
-    'total_ayat': 0,
-    'stage': 'preparing',  # preparing, downloading, processing, concatenating, complete
-    'eta_seconds': None,
-    'start_time': None
-}
+# Enhanced Progress Tracking System — see quran_reels.utils.progress
+# for the thread-safe ProgressState implementation.  ``current_progress``
+# is the module-level singleton imported at the top of this file.
 
 app = Flask(__name__, static_folder=EXEC_DIR)
 CORS(app)
 
 def reset_progress():
-    global current_progress
-    current_progress = {
-        'percent': 0,
-        'status': 'جاري التحضير...',
-        'log': [],
-        'is_running': False,
-        'is_complete': False,
-        'output_path': None,
-        'error': None,
-        'current_ayah': 0,
-        'total_ayat': 0,
-        'stage': 'preparing',
-        'eta_seconds': None,
-        'start_time': time.time()
-    }
+    """Reset the shared progress state to a fresh-build snapshot."""
+    current_progress.reset()
 
 def add_log(message):
-    current_progress['log'].append(message)
+    """Append a log line to the shared progress state (thread-safe)."""
+    current_progress.append_log(message)
     logging.info(f"PROGRESS: {message}")
 
 def update_progress(percent, status, stage=None, current_ayah=None, total_ayat=None):
-    current_progress['percent'] = percent
-    current_progress['status'] = status
-
-    if stage:
-        current_progress['stage'] = stage
-
+    """Update the shared progress state atomically (percent, ETA, etc.)."""
+    # Build the kwargs we want to write; filter out None so we don't
+    # clobber an existing value with ``None`` when the caller didn't
+    # pass an explicit stage/ayah/count.
+    updates = {'percent': percent, 'status': status}
+    if stage is not None:
+        updates['stage'] = stage
     if current_ayah is not None:
-        current_progress['current_ayah'] = current_ayah
-
+        updates['current_ayah'] = current_ayah
     if total_ayat is not None:
-        current_progress['total_ayat'] = total_ayat
+        updates['total_ayat'] = total_ayat
 
-    # Calculate ETA if we have progress and start time
-    if current_progress['start_time'] and percent > 0:
-        elapsed = time.time() - current_progress['start_time']
-        if percent < 100:
-            estimated_total = elapsed * 100 / percent
-            current_progress['eta_seconds'] = max(0, estimated_total - elapsed)
-        else:
-            current_progress['eta_seconds'] = 0
+    # The set() and calculate_eta() must happen under the same lock so
+    # readers never see a percent bump without a matching ETA.
+    with current_progress._lock:
+        current_progress.set(**updates)
+        current_progress.calculate_eta()
 
     logging.info(f"STATUS ({percent}%): {status}")
 
@@ -1377,166 +1077,10 @@ def get_preprocessed_bg(bg_path, target_w=TARGET_W, target_h=TARGET_H):
         return bg_path  # Fallback to original
 
 # =============================================================================
-# STEP 13.5: DYNAMIC TEXT COLOR ANALYZER
+# STEP 13.5: DYNAMIC TEXT COLOR ANALYZER  (refactored — see quran_reels.services.contrast)
 # =============================================================================
-
-def analyze_background_brightness(bg_path, sample_seconds=1):
-    """
-    Analyze background video brightness to determine optimal text color.
-    Returns brightness value 0.0 (dark) to 1.0 (bright)
-    """
-    try:
-        # Use FFmpeg to extract a frame and calculate average brightness
-        cmd = [
-            FFMPEG_EXE, '-i', bg_path,
-            '-ss', str(sample_seconds),
-            '-vframes', '1',
-            '-vf', 'format=gray,scale=1:1',
-            '-f', 'rawvideo', '-pix_fmt', 'gray',
-            'pipe:1'
-        ]
-
-        result = subprocess.run(cmd, capture_output=True, timeout=10)
-        if result.returncode == 0 and result.stdout:
-            # Get the pixel value (0-255)
-            pixel_value = result.stdout[0] if result.stdout else 128
-            brightness = pixel_value / 255.0
-            return brightness
-    except Exception as e:
-        logging.warning(f"Could not analyze background brightness: {e}")
-
-    # Default to medium brightness if analysis fails
-    return 0.5
-
-def get_contrasting_text_color(bg_path, template_color='white', auto_detect=True):
-    """
-    Determine optimal text color based on background brightness.
-
-    Args:
-        bg_path: Path to background video
-        template_color: Default color from template
-        auto_detect: If True, analyze background; if False, use template color
-
-    Returns:
-        tuple: (text_color, stroke_color) as PIL color strings
-    """
-    if not auto_detect:
-        # Use template color with dark stroke
-        if template_color.lower() == 'gold':
-            return ('#FFD700', 'black')
-        elif template_color.lower() == 'white':
-            return ('white', 'black')
-        else:
-            return (template_color, 'black')
-
-    # Analyze background brightness
-    brightness = analyze_background_brightness(bg_path)
-
-    # Choose colors based on brightness
-    if brightness > 0.6:
-        # Bright background - use dark text with lighter stroke
-        return ('#1a1a1a', '#ffffff')  # Dark gray with white stroke
-    elif brightness < 0.4:
-        # Dark background - use light text with dark stroke
-        return ('#ffffff', '#000000')  # White with black stroke
-    else:
-        # Medium brightness - use template color
-        if template_color.lower() == 'gold':
-            return ('#FFD700', '#000000')
-        else:
-            return ('#ffffff', '#000000')
-
-def get_ffmpeg_text_animation_filter(animation_name, duration=5.0, fps=30):
-    """
-    Generate FFmpeg filter for text intro animations.
-    Phase 2 (T2.1) — returns a real filter expression to be applied to the
-    text PNG before the overlay, OR None to fall back to static overlay.
-
-    All durations are derived from the ayah audio length so they adapt
-    naturally to short/long recitations.  `fade_d` is the animation window
-    (0.5 s) — we cap it to duration/2 to avoid negative offsets on tiny clips.
-
-    Supported animations:
-      fade_in, fade_out, slide_up, slide_down, slide_left, slide_right,
-      zoom_in, zoom_out.  Everything else (typewriter, bounce, glow, reveal)
-      returns None and is deferred to Phase 3 / kinetic_text.
-    """
-    if not FEATURE_FLAGS.get('text_animations', False):
-        return None
-
-    # Cap the animation window so a 0.4 s ayah isn't asked to fade for 0.5 s.
-    fade_d = min(0.5, max(0.1, duration / 2))
-
-    if animation_name == 'fade_in':
-        return f'fade=t=in:st=0:d={fade_d:.3f}:alpha=1'
-
-    if animation_name == 'fade_out':
-        st = max(0.0, duration - fade_d)
-        return f'fade=t=out:st={st:.3f}:d={fade_d:.3f}:alpha=1'
-
-    if animation_name == 'slide_up':
-        dist = 50
-        # pad bottom by `dist` and shift the visible region up over fade_d
-        return (
-            f'pad=iw:ih+{dist}:0:{dist}:black@0,'
-            f'fade=t=in:st=0:d={fade_d:.3f}:alpha=1,'
-            f'crop=iw:ih-{dist}:0:0'
-        )
-
-    if animation_name == 'slide_down':
-        dist = 50
-        return (
-            f'pad=iw:ih+{dist}:0:0:black@0,'
-            f'fade=t=in:st=0:d={fade_d:.3f}:alpha=1,'
-            f'crop=iw:ih-{dist}:0:{dist}'
-        )
-
-    if animation_name == 'slide_left':
-        # A true horizontal slide needs an animated `overlay` (per-frame t-eval
-        # on a second input) which doesn't compose with the static PNG input
-        # we have here.  Use a fade as the visual stand-in; full per-frame
-        # slide is a Phase 3 / kinetic_text feature.
-        return f'fade=t=in:st=0:d={fade_d:.3f}:alpha=1'
-
-    if animation_name == 'slide_right':
-        return f'fade=t=in:st=0:d={fade_d:.3f}:alpha=1'
-
-    if animation_name == 'zoom_in':
-        # Per-frame scale requires the `t` expression variable, which Pillow's
-        # PNG doesn't expose — use fade_in as a stand-in until Phase 3 wires
-        # up a properly-scaled second pass.
-        return f'fade=t=in:st=0:d={fade_d:.3f}:alpha=1'
-
-    if animation_name == 'zoom_out':
-        return f'fade=t=out:st={max(0.0, duration - fade_d):.3f}:d={fade_d:.3f}:alpha=1'
-
-    # typewriter / bounce / glow / reveal: defer to kinetic_text (Phase 3)
-    return None
-
-# Global background rotator instance
-bg_rotator = None
-
-def init_background_rotator(style='nature'):
-    """Initialize or reset the background rotator for a new video"""
-    global bg_rotator
-    bg_rotator = BackgroundRotator(style)
-    logging.info(f"Background rotator initialized for style: {style}")
-    return bg_rotator
-
-def get_next_background(style='nature', count=1):
-    """Get next background(s) using rotator to prevent repetition"""
-    global bg_rotator
-
-    # Initialize if needed or style changed
-    if bg_rotator is None or bg_rotator.style != style:
-        init_background_rotator(style)
-
-    try:
-        return bg_rotator.get_next(count)
-    except ValueError:
-        # Fallback to random selection if rotator fails
-        logging.warning(f"Rotator failed, falling back to random selection")
-        return pick_bg(style, count)
+# analyze_background_brightness and get_contrasting_text_color are imported
+# from quran_reels.services.contrast at the top of this file.
 
 # =============================================================================
 # STEP 14: TEXT RENDERING TO PNG (NEW UNIFIED FUNCTION)
@@ -1591,11 +1135,14 @@ def _fontsize_for_wordcount(word_count, size_mult):
     return int(95 * size_mult), 3
 
 
-def render_text_to_png(arabic_text, template, output_png_path, selected_font=None, quality='medium'):
+def render_text_to_png(arabic_text, template, output_png_path, selected_font=None,
+                       quality='medium', text_color=None, stroke_color=None):
     """
     Render Arabic text to PNG using the unified, broadcast-grade renderer.
 
     Honours per-template font + glow settings and the quality preset's supersample.
+    Pass `text_color` / `stroke_color` to override the template's defaults
+    (used for dynamic contrast-based coloring from get_contrasting_text_color).
     """
     template_config = TEMPLATES.get(template, TEMPLATES['normal'])
 
@@ -1607,10 +1154,15 @@ def render_text_to_png(arabic_text, template, output_png_path, selected_font=Non
     size_mult = template_config['font_size_mult']
     fontsize, per_line = _fontsize_for_wordcount(word_count, size_mult)
 
-    # Text color (template can be a hex string or a name like 'gold')
-    text_color = template_config['text_color']
-    if not text_color.startswith('#'):
-        text_color = {'gold': '#FFD700', 'white': '#FFFFFF', 'bright': '#00FFFF'}.get(text_color, '#FFFFFF')
+    # Fill color: override -> template's text_color (hex or name like 'gold')
+    if text_color is None:
+        text_color = template_config['text_color']
+        if not text_color.startswith('#'):
+            text_color = {'gold': '#FFD700', 'white': '#FFFFFF', 'bright': '#00FFFF'}.get(text_color, '#FFFFFF')
+
+    # Stroke color: override -> hardcoded black for readability
+    if stroke_color is None:
+        stroke_color = '#000000'
 
     # Glow (e.g. ramadan template)
     glow_color = template_config.get('glow_color')
@@ -1621,7 +1173,7 @@ def render_text_to_png(arabic_text, template, output_png_path, selected_font=Non
         text=arabic_text,
         fontsize=fontsize,
         color=text_color,
-        stroke_color='#000000',
+        stroke_color=stroke_color,
         stroke_width=3,
         words_per_line=per_line,
         target_width=TARGET_W - 160,
@@ -1639,62 +1191,7 @@ def render_text_to_png(arabic_text, template, output_png_path, selected_font=Non
     img.save(output_png_path)
     logging.info(
         f"✅ Text rendered: font={font_name}, template={template}, quality={quality}, "
-        f"glow={bool(glow_color)} -> {output_png_path}"
-    )
-    return output_png_path
-
-
-def render_text_to_png_with_colors(arabic_text, template, output_png_path,
-                                  selected_font=None, text_color='white', stroke_color='black',
-                                  quality='medium'):
-    """
-    Render Arabic text to PNG with custom (auto-detected) colors.
-    Used for dynamic text color based on background brightness.
-    Per-template font + glow are still respected; only the fill/stroke colors
-    are overridden.
-    """
-    template_config = TEMPLATES.get(template, TEMPLATES['normal'])
-
-    # Resolve font
-    font_path, font_name = _resolve_template_font(template_config, selected_font)
-
-    # Word-count aware sizing
-    word_count = len(arabic_text.split())
-    size_mult = template_config['font_size_mult']
-    fontsize, per_line = _fontsize_for_wordcount(word_count, size_mult)
-
-    # Color name -> hex
-    color_map = {'white': '#FFFFFF', 'black': '#000000', 'gold': '#FFD700'}
-    text_color_hex = color_map.get(text_color.lower(), text_color)
-    stroke_color_hex = color_map.get(stroke_color.lower(), stroke_color)
-
-    # Glow comes from the template
-    glow_color = template_config.get('glow_color')
-    glow_radius = template_config.get('glow_radius', 6)
-
-    img = render_arabic_to_pil_image(
-        text=arabic_text,
-        fontsize=fontsize,
-        color=text_color_hex,
-        stroke_color=stroke_color_hex,
-        stroke_width=3,
-        words_per_line=per_line,
-        target_width=TARGET_W - 160,
-        font_path=font_path,
-        supersample=_supersample_for_quality(quality),
-        shadow=True,
-        shadow_offset=4,
-        shadow_color='#00000080',
-        glow_color=glow_color,
-        glow_radius=glow_radius,
-    )
-
-    os.makedirs(os.path.dirname(output_png_path) or ".", exist_ok=True)
-    img.save(output_png_path)
-    logging.info(
-        f"✅ Text rendered w/ custom colors: font={font_name}, template={template}, "
-        f"quality={quality}, text={text_color_hex}, stroke={stroke_color_hex}, "
-        f"glow={bool(glow_color)} -> {output_png_path}"
+        f"text={text_color}, stroke={stroke_color}, glow={bool(glow_color)} -> {output_png_path}"
     )
     return output_png_path
 
@@ -1917,9 +1414,9 @@ def process_single_ayah_ffmpeg(args):
             logging.debug(f"Segment {idx}: Text color={text_color}, stroke={stroke_color}")
 
             # Render with custom colors (Phase 1: quality -> supersample, template font + glow)
-            render_text_to_png_with_colors(arabic_text, template, text_png,
-                                          selected_font, text_color, stroke_color,
-                                          quality=quality)
+            render_text_to_png(arabic_text, template, text_png,
+                              selected_font=selected_font, quality=quality,
+                              text_color=text_color, stroke_color=stroke_color)
         else:
             # Create a transparent 1x1 pixel PNG for no-text mode
             from PIL import Image
@@ -1928,7 +1425,18 @@ def process_single_ayah_ffmpeg(args):
             logging.debug(f"Created transparent placeholder: {text_png}")
 
         # Build segment with animation filter (Phase 2: text animation + outro fade)
-        animation_filter = get_ffmpeg_text_animation_filter(text_animation, duration)
+        # Pass text PNG dimensions so zoom_in/zoom_out can pad the scaled text
+        # back to the original canvas size, centered.  Slides don't need this.
+        text_size = None
+        if show_text and os.path.exists(text_png):
+            try:
+                from PIL import Image as _PILImage
+                with _PILImage.open(text_png) as _img:
+                    text_size = _img.size
+            except Exception:
+                text_size = None
+        animation_filter = get_ffmpeg_text_animation_filter(
+            text_animation, duration, text_size=text_size)
         build_segment_ffmpeg(bg_paths, text_png, audio_path, duration, segment_out,
                            show_text=show_text, text_animation_filter=animation_filter,
                            is_last=is_last)
@@ -1951,13 +1459,16 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
     """
     Main video builder - optimized and refactored.
     No clear_outputs() needed - uses temp directory.
-    """
-    global current_progress
 
+    Returns:
+        str | None: Absolute ``output_path`` of the final mp4 on success,
+        or ``None`` on failure.  The return value is purely informational —
+        progress and errors are also reported via the ``current_progress``
+        global so the existing ``threading.Thread(target=build_video, ...)``
+        callers in the API routes continue to work unchanged.
+    """
     try:
-        current_progress['is_running'] = True
-        current_progress['is_complete'] = False
-        current_progress['error'] = None
+        current_progress.set(is_running=True, is_complete=False, error=None)
 
         # Get config
         quality_config = QUALITY_PRESETS.get(quality, QUALITY_PRESETS['medium'])
@@ -2217,23 +1728,22 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
         # Success
         add_log('Done!')
         update_progress(100, 'تم بنجاح!')
-        current_progress['is_complete'] = True
-        current_progress['output_path'] = output_path
+        current_progress.set(is_complete=True, output_path=output_path)
 
         if os.path.isfile(output_path):
             size_mb = os.path.getsize(output_path) / (1024 * 1024)
             logging.info(f"Output: {output_path} ({size_mb:.2f} MB)")
 
-        # Clean up temp files after successful video
-        cleanup_after_video()
+        return output_path
 
     except Exception as e:
         logging.exception("Error in build_video")
-        current_progress['error'] = str(e)
+        current_progress.set(error=str(e))
         add_log(f'[ERROR] {str(e)}')
         update_progress(0, f'خطأ: {str(e)}')
+        return None
     finally:
-        current_progress['is_running'] = False
+        current_progress.set(is_running=False)
 
 # =============================================================================
 # STEP 18: API ROUTES (SIMPLIFIED)
@@ -2255,9 +1765,7 @@ def serve_js():
 
 @app.route('/api/generate', methods=['POST'])
 def generate_video():
-    global current_progress
-
-    if current_progress['is_running']:
+    if current_progress.is_running:
         return jsonify({'error': 'عملية إنشاء فيديو قيد التنفيذ بالفعل'}), 400
 
     data = request.json
@@ -2291,13 +1799,12 @@ def generate_video():
 
 @app.route('/api/progress', methods=['GET'])
 def get_progress():
-    return jsonify(current_progress)
+    return jsonify(current_progress.to_dict())
 
 @app.route('/api/preview', methods=['POST'])
 def preview_video():
     """Generate a preview of the first ayah (one verse)."""
-    global current_progress
-    if current_progress['is_running']:
+    if current_progress.is_running:
         return jsonify({'error': 'عملية أخرى قيد التنفيذ'}), 400
 
     data = request.json
