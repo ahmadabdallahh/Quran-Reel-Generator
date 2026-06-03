@@ -41,7 +41,7 @@ An automated AI-powered tool to create professional Quranic Reels/Shorts video c
 - Sheikh Mustafa Ismail
 
 #### 🎨 Design & Customization
-- **Dynamic Fonts**: Auto-detection of all .ttf/.otf fonts in `fonts/` folder with caching
+- **Dynamic Fonts**: Auto-detection of all .ttf/.otf fonts in `fonts/` folder with caching. **All Arabic fonts render correctly** via the HarfBuzz + FreeType shaping pipeline (ligatures, tashkeel, kashida, GPOS positioning). 20 fonts ship in the box: Almadinah, Amiri, DigitalKhatt, DigitalMadina, Dubai, Elgharib, Lateef, Letellka, RanaKufi, Tajawal, Uthman, Zain.
 - **Smart Backgrounds**: Organized by style (Nature, Islamic, Masjid, Night)
 - **Visual Templates**: 4 professional themes (Ramadan, Normal, Masjid, Islamic)
 - **Arabic Text Rendering**: Proper tashkeel and RTL support using arabic-reshaper
@@ -172,7 +172,7 @@ VIDEO_TRANSITIONS = {
 | Issue | Solution |
 |-------|----------|
 | FFmpeg not found | Ensure `bin/ffmpeg/ffmpeg.exe` exists or add FFmpeg to system PATH |
-| Arabic text not showing | Add Arabic fonts to `fonts/` folder and restart server |
+| Arabic text not showing | Verify the font has Arabic coverage (run `python -c "import freetype; print(freetype.Face('fonts/YOUR.ttf').num_glyphs)"`); all 20 shipped fonts work via the HarfBuzz pipeline |
 | Audio download fails | Check internet connection; verify reciter ID exists at everyayah.com |
 | Video generation slow | Use 'low' quality; process fewer ayahs; close other applications |
 | Out of memory errors | Reduce quality; process in smaller batches; increase RAM |
@@ -236,7 +236,7 @@ Apache 2.0 - See [LICENSE](LICENSE) file for details
 - الشيخ مصطفى إسماعيل
 
 #### 🎨 التصميم والتخصيص
-- **خطوط ديناميكية**: اكتشاف تلقائي لجميع الخطوط في مجلد `fonts/` مع تخزين مؤقت
+- **خطوط ديناميكية**: اكتشاف تلقائي لجميع الخطوط في مجلد `fonts/` مع تخزين مؤقت. **جميع الخطوط العربية تُعرض بشكل صحيح** عبر مسار HarfBuzz + FreeType (ربط الحروف، التشكيل، الكشيدة، التموضع GPOS). يأتي المشروع مع 20 خطاً: Almadinah و Amiri و DigitalKhatt و DigitalMadina و Dubai و Elgharib و Lateef و Letellka و RanaKufi و Tajawal و Uthman و Zain.
 - **خلفيات منظمة**: مصنفة حسب النمط (طبيعة، إسلامي، مساجد، ليل)
 - **قوالب جاهزة**: 4 أنماط احترافية (رمضان، افتراضي، مساجد، إسلامي)
 - **عرض عربي**: دعم التشكيل والكتابة من اليمين لليسار
@@ -367,7 +367,7 @@ VIDEO_TRANSITIONS = {
 | المشكلة | الحل |
 |---------|------|
 | FFmpeg غير موجود | تأكد من وجود `bin/ffmpeg/ffmpeg.exe` أو أضف FFmpeg لـ PATH النظام |
-| النص العربي لا يظهر | أضف خطوط عربية لمجلد `fonts/` وأعد تشغيل الخادم |
+| النص العربي لا يظهر | تحقق أن الخط يحتوي على تغطية عربية (شغّل `python -c "import freetype; print(freetype.Face('fonts/YOUR.ttf').num_glyphs)"`)؛ جميع الخطوط العشرين تعمل عبر مسار HarfBuzz |
 | فشل تحميل الصوت | تأكد من اتصال الإنترنت؛ تحقق من معرف القارئ في everyayah.com |
 | بطء إنشاء الفيديو | استخدم جودة 'منخفضة'؛ عالج آيات أقل؛ أغلق التطبيقات الأخرى |
 | أخطاء نفاد الذاكرة | قلل الجودة؛ عالج على دفعات أصغر؛ زِد الرام |

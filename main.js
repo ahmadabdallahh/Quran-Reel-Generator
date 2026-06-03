@@ -167,6 +167,15 @@ function initCounters() {
             }
         });
     });
+
+    // Live-update the reciter-speed label as the user drags the slider
+    const reciterSpeedInput = document.getElementById('reciterSpeedInput');
+    const reciterSpeedValue = document.getElementById('reciterSpeedValue');
+    if (reciterSpeedInput && reciterSpeedValue) {
+        reciterSpeedInput.addEventListener('input', () => {
+            reciterSpeedValue.textContent = parseFloat(reciterSpeedInput.value).toFixed(2);
+        });
+    }
 }
 
 function initParticles() {
@@ -298,7 +307,15 @@ generateBtn.addEventListener('click', async (e) => {
         personName: personNameInput.value,
         format: formatSelect.value,
         selectedFont: document.getElementById('fontSelect').value,
-        showText: document.getElementById('showTextSelect').value === 'yes'
+        showText: document.getElementById('showTextSelect').value === 'yes',
+        includeBismillah: document.getElementById('bismillahCheckbox').checked,
+        targetDurationSeconds: (() => {
+            const v = document.getElementById('targetDurationInput').value;
+            const n = parseInt(v, 10);
+            return Number.isFinite(n) && n > 0 ? n : null;
+        })(),
+        reciterSpeed: parseFloat(document.getElementById('reciterSpeedInput').value) || 1.0,
+        transitionStyle: document.getElementById('transitionStyleSelect').value || null
     };
 
     if (payload.endAyah < payload.startAyah) {

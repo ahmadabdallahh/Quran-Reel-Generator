@@ -54,11 +54,13 @@ TEMPLATES = {
     'ramadan': {
         'bg_style': 'night', 'text_color': '#FFD700', 'font_size_mult': 1.20,
         'text_animation': 'fade_in', 'transition': 'fade',
+        'transition_style': 'cinematic',
         'font': 'Amiri-Bold.ttf', 'glow_color': '#FFD700', 'glow_radius': 8,
     },
     'normal':  {
         'bg_style': 'nature', 'text_color': '#FFFFFF', 'font_size_mult': 1.00,
-        'text_animation': 'slide_up', 'transition': 'dissolve',
+        'text_animation': 'slide_up', 'transition': 'fade',
+        'transition_style': 'cinematic',
         'font': 'Amiri-Regular.ttf',
     },
     'masjid':  {
@@ -67,12 +69,14 @@ TEMPLATES = {
         # PIL does not apply OpenType GSUB contextual substitution.
         'bg_style': 'masjid', 'text_color': '#FFFFFF', 'font_size_mult': 1.10,
         'text_animation': 'fade_in', 'transition': 'fade',
+        'transition_style': 'cinematic',
         'font': 'Amiri-Bold.ttf', 'glow_color': '#FFFFFF80', 'glow_radius': 4,
     },
     'islamic': {
         # Heavier drop shadow gives the calligraphic depth of manuscript art.
         'bg_style': 'islamic', 'text_color': '#FFFFFF', 'font_size_mult': 1.10,
         'text_animation': 'zoom_in', 'transition': 'wipe',
+        'transition_style': 'cinematic',
         'font': 'Amiri-Bold.ttf',
     },
 }
@@ -138,3 +142,15 @@ RECITERS_MAP = {
     'الشيخ محمد الطبلاوي':                     'Mohammad_al_Tablaway_128kbps',
     'الشيخ مصطفى إسماعيل':                    'Mustafa_Ismail_48kbps',
 }
+
+# =============================================================================
+# Bismillah (Surah-opening invocation)
+# =============================================================================
+# Bismillah is recited at the start of every surah EXCEPT At-Tawbah (surah 9).
+# Al-Fatihah (surah 1) is skipped here because "Bismillah ..." is already
+# considered the first ayah of Al-Fatihah by most schools — prepending it
+# would duplicate.
+
+BISMILLAH_TEXT = "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ"
+BISMILLAH_DURATION_SEC = 1.8  # self-contained title card length
+BISMILLAH_SKIP_SURAHS = {1, 9}  # Al-Fatihah (Bismillah IS ayah 1) and At-Tawbah

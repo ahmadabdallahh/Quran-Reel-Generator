@@ -261,6 +261,32 @@ body::before {
     fill: var(--primary-gold);
 }
 
+.form-label.checkbox-label {
+    cursor: pointer;
+    user-select: none;
+    padding: 8px 0;
+}
+
+.form-label.checkbox-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary-gold);
+    cursor: pointer;
+}
+
+.form-label.checkbox-label span {
+    flex: 1;
+    text-align: right;
+}
+
+.form-hint {
+    margin: 6px 0 0 0;
+    color: var(--text-muted, rgba(255,255,255,0.5));
+    font-size: 0.85rem;
+    text-align: right;
+    font-weight: 400;
+}
+
 .form-control {
     width: 100%;
     background: var(--bg-secondary);

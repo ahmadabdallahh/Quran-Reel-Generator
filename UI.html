@@ -136,6 +136,39 @@
                         </select>
                     </div>
                     <div class="form-group full-width">
+                        <label class="form-label checkbox-label" for="bismillahCheckbox">
+                            <input type="checkbox" id="bismillahCheckbox" checked />
+                            <span>بدء الفيديو بالبسملة (بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ)</span>
+                        </label>
+                        <p class="form-hint">يتم تلقائياً تخطي سورتي الفاتحة والتوبة</p>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="targetDurationInput">
+                            الحد الأقصى لمدة الفيديو (ثوانٍ)
+                        </label>
+                        <input type="number" id="targetDurationInput" class="form-control"
+                               min="0" step="1" placeholder="بدون حد" />
+                        <p class="form-hint">اتركه فارغاً لاستخدام كل الآيات المحددة</p>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="reciterSpeedInput">
+                            سرعة التلاوة (<span id="reciterSpeedValue">1.00</span>×)
+                        </label>
+                        <input type="range" id="reciterSpeedInput" class="form-control"
+                               min="0.5" max="2.0" step="0.05" value="1.0" />
+                        <p class="form-hint">0.5× أبطأ، 1.0× عادي، 2.0× أسرع (بدون تغيير النبرة)</p>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="transitionStyleSelect">أسلوب الانتقال بين الآيات</label>
+                        <select id="transitionStyleSelect" class="form-control">
+                            <option value="" selected>افتراضي (حسب القالب)</option>
+                            <option value="cinematic">سينمائي — قطع حاد (بدون تداخل)</option>
+                            <option value="dynamic">متحرك — تداخل (xfade) بين كل آية</option>
+                            <option value="smooth">سلس — تداخل خفيف بين بعض الآيات فقط</option>
+                            <option value="cut">قطع فقط — لا تداخل ولا تلاشي</option>
+                        </select>
+                    </div>
+                    <div class="form-group full-width">
                         <label class="form-label">تنسيق الفيديو</label>
                         <select id="formatSelect" class="form-control">
                             <option value="reels" selected>Instagram Reels / TikTok (9:16)</option>

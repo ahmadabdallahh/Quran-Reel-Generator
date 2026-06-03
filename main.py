@@ -26,6 +26,55 @@ from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 
 # =============================================================================
+# STEP 0: ENVIRONMENT LOADING  (refactor P1-9)
+# =============================================================================
+# Reads ``.env`` from the current working directory (or any parent) into
+# ``os.environ`` BEFORE any of the path / port / size constants below are
+# resolved.  ``load_dotenv()`` does NOT clobber values that are already set
+# in the real environment, so production shells still win over ``.env``.
+
+from dotenv import load_dotenv
+load_dotenv()
+
+def _env(key, default=None, cast=str):
+    """Read an env var, falling back to ``default`` if unset/empty.
+    The default is type-coerced via ``cast`` so numeric / bool flags work
+    without the caller having to do ``int(os.environ.get(...))`` boilerplate.
+    Invalid values fall back to the default and log a warning.
+    """
+    raw = os.environ.get(key)
+    if raw is None or raw == "":
+        return cast(default) if default is not None else default
+    try:
+        return cast(raw)
+    except (TypeError, ValueError):
+        logging.warning(f"Invalid value for {key}={raw!r}; using default {default!r}")
+        return cast(default) if default is not None else default
+
+
+def _env_path(key, default, base_dir=None):
+    """Read a filesystem path env var with EXEC_DIR-relative resolution.
+
+    - If the env var is set AND the value is an absolute path, it's returned as-is.
+    - If the env var is set AND the value is relative, it's resolved against ``base_dir``.
+    - If the env var is unset/empty, ``default`` is used (resolved against ``base_dir``
+      when ``default`` is also relative).
+
+    Defaults ``base_dir`` to ``EXEC_DIR`` so the common case of project-relative
+    layout doesn't need to spell it out at every call site.
+    """
+    if base_dir is None:
+        base_dir = EXEC_DIR
+    raw = os.environ.get(key)
+    if raw is None or raw == "":
+        rel = default
+    else:
+        rel = raw
+    if os.path.isabs(rel):
+        return rel
+    return os.path.join(base_dir, rel)
+
+# =============================================================================
 # Refactor P1-1 (scoped split): leaf modules extracted from this file.
 # Re-exported at module level below so existing ``import main; main.X``
 # callers and ``from main import X`` keep working unchanged.
@@ -39,6 +88,9 @@ from quran_reels.config import (
     VERSE_COUNTS,
     SURAH_NAMES,
     RECITERS_MAP,
+    BISMILLAH_TEXT,
+    BISMILLAH_DURATION_SEC,
+    BISMILLAH_SKIP_SURAHS,
 )
 from quran_reels.services.contrast import (
     analyze_background_brightness,
@@ -76,7 +128,7 @@ BUNDLE_DIR = bundled_dir()
 # STEP 2: LOGGING SETUP
 # =============================================================================
 
-log_path = os.path.join(EXEC_DIR, "runlog.txt")
+log_path = _env_path("QURAN_LOG_PATH", "runlog.txt")
 logging.basicConfig(filename=log_path, level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s', force=True)
 console_handler = logging.StreamHandler()
@@ -86,24 +138,25 @@ logging.getLogger().addHandler(console_handler)
 logging.info("--- Quran Reels Generator (Refactored) ---")
 logging.info(f"Exec Dir: {EXEC_DIR}")
 logging.info(f"Bundle Dir: {BUNDLE_DIR}")
+logging.info(f"Log path: {log_path}")
 
 # =============================================================================
 # STEP 3: TEMPORARY DIRECTORY MANAGEMENT (NEW: replaces static audio folder)
 # =============================================================================
 
 # Create temp directory inside project structure that auto-cleans on exit
-TEMP_DIR = os.path.join(EXEC_DIR, "temp")
+TEMP_DIR = _env("QURAN_TEMP_DIR", os.path.join(EXEC_DIR, "temp"))
 os.makedirs(TEMP_DIR, exist_ok=True)
 logging.info(f"Temp directory: {TEMP_DIR}")
 
 # Create persistent audio cache directory
-AUDIO_CACHE_DIR = os.path.join(EXEC_DIR, "cache", "audio")
+AUDIO_CACHE_DIR = _env("QURAN_AUDIO_CACHE_DIR", os.path.join(EXEC_DIR, "cache", "audio"))
 os.makedirs(AUDIO_CACHE_DIR, exist_ok=True)
 logging.info(f"Audio cache directory: {AUDIO_CACHE_DIR}")
 
 # Cache management
-AUDIO_CACHE_MAX_SIZE_MB = 500  # Maximum cache size in MB
-AUDIO_CACHE_MAX_FILES = 1000   # Maximum number of files
+AUDIO_CACHE_MAX_SIZE_MB = _env("QURAN_AUDIO_CACHE_MAX_SIZE_MB", 500, int)  # Maximum cache size in MB
+AUDIO_CACHE_MAX_FILES = _env("QURAN_AUDIO_CACHE_MAX_FILES", 1000, int)    # Maximum number of files
 
 def get_cached_audio_path(reciter_id, surah, ayah):
     """Get cached audio file path"""
@@ -111,6 +164,114 @@ def get_cached_audio_path(reciter_id, surah, ayah):
     reciter_dir = os.path.join(AUDIO_CACHE_DIR, str(reciter_id))
     os.makedirs(reciter_dir, exist_ok=True)
     return os.path.join(reciter_dir, fn)
+
+
+def _compute_xfade_pairs(transition_style, n, xfade_d):
+    """Return a list of booleans of length ``n-1`` marking which consecutive
+    segment pairs get a real xfade (True) vs a hard cut with xfade_d=0 (False).
+
+    transition_style:
+      - cinematic : False * (n-1)  -- no xfade, rely on per-segment fade in/out
+      - cut       : False * (n-1)  -- hard cuts only
+      - dynamic   : True  * (n-1)  -- xfade every consecutive pair
+      - smooth    : True every 3rd pair (n//3); hard cut the rest
+      - unknown   : treated as dynamic
+    """
+    if n <= 1:
+        return []
+    if transition_style in ('cinematic', 'cut'):
+        return [False] * (n - 1)
+    if transition_style == 'dynamic':
+        return [True] * (n - 1)
+    if transition_style == 'smooth':
+        every = max(1, n // 3)
+        return [((i + 1) % every == 0) for i in range(n - 1)]
+    # Unknown / future styles default to dynamic for visual continuity
+    return [True] * (n - 1)
+
+
+def _split_into_chunks(is_xfade_pair):
+    """Group consecutive segment indices into "chunks" separated by xfade
+    boundaries.  Each chunk is a list of indices that should be hard-cut
+    together (via the concat demuxer) before being xfaded with the next
+    chunk.
+
+    Example: is_xfade_pair = [F, T, F, T, F, T] for n=7 segments
+             => chunks = [[0, 1], [2, 3], [4, 5], [6]]
+    """
+    n = len(is_xfade_pair) + 1
+    chunks = []
+    current = [0]
+    for i, is_xfade in enumerate(is_xfade_pair):
+        if is_xfade:
+            chunks.append(current)
+            current = [i + 1]
+        else:
+            current.append(i + 1)
+    chunks.append(current)
+    return chunks
+
+
+def _premerge_chunks(chunk_groups, segment_results, seg_durations):
+    """For each chunk of 1 segment, return the original segment path as-is.
+    For each chunk of 2+ segments, pre-merge them via the ffmpeg concat
+    demuxer into a single mp4 in TEMP_DIR.  Returns:
+        (chunk_paths, chunk_durations) where chunk_paths[i] is a string
+        file path and chunk_durations[i] is the summed duration.
+    """
+    chunk_paths = []
+    chunk_durations = []
+    for ci, chunk in enumerate(chunk_groups):
+        chunk_dur = sum(seg_durations[idx] for idx in chunk)
+        if len(chunk) == 1:
+            # Single-segment chunk — use the original segment file
+            chunk_paths.append(segment_results[chunk[0]][1])
+            chunk_durations.append(chunk_dur)
+            continue
+        # Multi-segment chunk: pre-merge via concat demuxer
+        list_path = os.path.join(TEMP_DIR, f"chunk_{ci:03d}_{int(time.time()*1000)}.txt")
+        with open(list_path, 'w', encoding='utf-8') as f:
+            for idx in chunk:
+                _, seg_path = segment_results[idx]
+                abs_path = os.path.abspath(seg_path).replace(os.sep, '/').replace("'", "'\\''")
+                f.write(f"file '{abs_path}'\n")
+        out_path = os.path.join(TEMP_DIR, f"chunk_{ci:03d}_{int(time.time()*1000)}.mp4")
+        cmd = [
+            FFMPEG_EXE, '-y', '-f', 'concat', '-safe', '0', '-i', list_path,
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '4',
+            '-c:a', 'aac', '-b:a', '192k',
+            '-movflags', '+faststart',
+            out_path,
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0 or not os.path.exists(out_path):
+            raise RuntimeError(
+                f"Chunk pre-merge failed for chunk {ci}: {res.stderr.strip()}"
+            )
+        chunk_paths.append(out_path)
+        chunk_durations.append(chunk_dur)
+        logging.info(f"Pre-merged chunk {ci} ({len(chunk)} segments, {chunk_dur:.2f}s) -> {out_path}")
+    return chunk_paths, chunk_durations
+
+
+# Default audio length used when an ayah is not yet in the cache and the
+# target_duration_seconds cap is being estimated.  Conservative — actual
+# recitation is usually shorter.
+_AYAH_DURATION_ESTIMATE_SEC = 5.0
+
+
+def _estimate_ayah_duration(reciter_id, surah, ayah):
+    """Return the cached audio duration of one ayah, or a default if
+    not yet cached.  Used to pre-compute the target_duration_seconds cap
+    before the parallel download pool opens.
+    """
+    p = get_cached_audio_path(reciter_id, surah, ayah)
+    if os.path.exists(p) and os.path.getsize(p) > 1000:
+        try:
+            return get_audio_duration_ffprobe(p)
+        except Exception:
+            pass
+    return _AYAH_DURATION_ESTIMATE_SEC
 
 def cleanup_audio_cache():
     """Clean audio cache if it exceeds limits"""
@@ -204,20 +365,20 @@ def find_binary(portable_path, system_name):
         return portable_path
     return shutil.which(system_name)
 
-FFMPEG_EXE = find_binary(os.path.join(BUNDLE_DIR, "bin", "ffmpeg", "ffmpeg.exe"), "ffmpeg")
-FFPROBE_EXE = find_binary(os.path.join(BUNDLE_DIR, "bin", "ffmpeg", "ffprobe.exe"), "ffprobe")
+FFMPEG_EXE = _env("QURAN_FFMPEG_EXE") or find_binary(os.path.join(BUNDLE_DIR, "bin", "ffmpeg", "ffmpeg.exe"), "ffmpeg")
+FFPROBE_EXE = _env("QURAN_FFPROBE_EXE") or find_binary(os.path.join(BUNDLE_DIR, "bin", "ffmpeg", "ffprobe.exe"), "ffprobe")
 if not FFPROBE_EXE and FFMPEG_EXE:
     prob_path = os.path.join(os.path.dirname(FFMPEG_EXE), "ffprobe.exe")
     if os.path.isfile(prob_path): FFPROBE_EXE = prob_path
     else: FFPROBE_EXE = shutil.which("ffprobe")
 
-VISION_DIR = os.path.join(BUNDLE_DIR, "vision")
-UI_PATH = os.path.join(BUNDLE_DIR, "UI.html")
+VISION_DIR = _env("QURAN_VISION_DIR", os.path.join(BUNDLE_DIR, "vision"))
+UI_PATH = _env("QURAN_UI_PATH", os.path.join(BUNDLE_DIR, "UI.html"))
 
-OUT_DIR = os.path.join(EXEC_DIR, "outputs")
+OUT_DIR = _env("QURAN_OUT_DIR", os.path.join(EXEC_DIR, "outputs"))
 VIDEO_DIR = os.path.join(OUT_DIR, "video")
 BG_CACHE_DIR = os.path.join(OUT_DIR, "bg_cache")
-FONT_DIR = os.path.join(EXEC_DIR, "fonts")
+FONT_DIR = _env("QURAN_FONT_DIR", os.path.join(EXEC_DIR, "fonts"))
 FONT_CACHE_DIR = os.path.join(FONT_DIR, "_cache")
 
 # =============================================================================
@@ -317,14 +478,19 @@ def init_font_system():
 
     logging.info("🔍 Initializing Arabic font system...")
 
-    # Priority order for Arabic fonts (best first)
+    # Priority order for Arabic fonts (best first).  All of these are
+    # now supported via the HarfBuzz + FreeType pipeline — see
+    # ``quran_reels.services.shaping`` and the new
+    # ``PIL_COMPATIBLE_ARABIC_FONTS`` list.
     preferred_fonts = [
         "Amiri-Bold.ttf", "Amiri-Regular.ttf",
+        "Lateef-Bold.ttf",
         "Dubai-Bold.ttf", "Dubai-Regular.ttf",
-        "Lateef-Bold.ttf", "Lateef-Medium.ttf",
-        "ElMessiri-Bold.ttf", "ElMessiri-Regular.ttf",
-        "Tajawal-Bold.ttf", "Tajawal-Regular.ttf",
-        "Zain-Bold.ttf", "Zain-Regular.ttf"
+        "Tajawal-Bold.ttf", "Tajawal-Medium.ttf", "Tajawal-Regular.ttf",
+        "Zain-Bold.ttf", "Zain-Light.ttf", "Zain-Regular.ttf",
+        "DigitalKhatt-OldMadina.otf", "DigitalMadina-NON V1.ttf",
+        "UthmanTN1-Ver10.otf",
+        "Letellka-Bold.otf", "Letellka-Light.otf",
     ]
 
     # Try preferred fonts first
@@ -384,24 +550,59 @@ def init_font_system():
     WORKING_FONT = "Arial"  # Fallback to system default
     return
 
-# Fonts that PIL can render Arabic with (have presentation forms in cmap).
-# The other 13 fonts in fonts/ require OpenType GSUB contextual substitution
-# which PIL doesn't apply, so they render as boxes. See skills.md §8.3.
-PIL_COMPATIBLE_ARABIC_FONTS = ['Amiri-Bold.ttf', 'Amiri-Regular.ttf']
+def _list_arabic_fonts():
+    """Return every .ttf/.otf file in ``fonts/`` that FreeType can open.
+
+    Previously this was a hard-coded list of two Amiri files (PIL's
+    ``ImageDraw.text()`` could only render those because they bake
+    presentation forms into their cmap).  With the HarfBuzz + FreeType
+    pipeline in ``quran_reels.services.shaping`` that constraint is gone
+    — every Arabic font in the project is now supported, so we just
+    enumerate the directory.
+
+    If a font file fails FreeType loading (e.g. it is a non-Arabic
+    fallback), it is silently dropped.
+    """
+    if not os.path.isdir(FONT_DIR):
+        return []
+    try:
+        import freetype as _ft
+    except ImportError:
+        # freetype-py not installed — fall back to extension-only filter
+        _ft = None
+    fonts = []
+    for name in sorted(os.listdir(FONT_DIR)):
+        if not name.lower().endswith(('.ttf', '.otf')):
+            continue
+        path = os.path.join(FONT_DIR, name)
+        if _ft is not None:
+            try:
+                _ft.Face(path).num_glyphs
+            except Exception:
+                logging.debug(f"Skipping non-loadable font: {name}")
+                continue
+        fonts.append(name)
+    return fonts
+
+
+# Backward-compatible alias for any code that imports the old constant.
+# ``PIL_COMPATIBLE_ARABIC_FONTS`` used to be a hard-coded list of the
+# two Amiri files that PIL could render directly; it is now the same
+# dynamic list as ``_list_arabic_fonts()`` so external callers see every
+# supported font.
+def PIL_COMPATIBLE_ARABIC_FONTS():
+    return _list_arabic_fonts()
 
 
 def get_random_font():
-    """Get a random working font from the PIL-compatible subset.
+    """Get a random Arabic font from the full ``fonts/`` directory.
 
-    NOTE: we cannot pick from the full fonts/ directory because most fonts
-    there (Lateef, ElMessiri, Dubai, Tajawal, ...) lack presentation forms
-    and PIL does not apply OpenType GSUB.  See PIL_COMPATIBLE_ARABIC_FONTS.
+    Any font in ``fonts/`` is supported via the HarfBuzz + FreeType
+    shaping pipeline (``quran_reels.services.shaping``).  This used to
+    be restricted to the two Amiri files because PIL's ``text()`` does
+    not apply OpenType GSUB.
     """
-    if not os.path.exists(FONT_DIR):
-        return WORKING_FONT
-    # Restrict to PIL-compatible fonts only
-    fonts = [f for f in PIL_COMPATIBLE_ARABIC_FONTS
-             if os.path.exists(os.path.join(FONT_DIR, f))]
+    fonts = _list_arabic_fonts()
     if not fonts:
         return WORKING_FONT
     return os.path.join(FONT_DIR, random.choice(fonts))
@@ -429,16 +630,21 @@ ARABIC_RESHAPER = arabic_reshaper.ArabicReshaper({
     'support_ligatures': True,
 })
 
-def process_arabic_text(text, words_per_line=4):
+def process_arabic_text(text, words_per_line=4, mode='visual'):
     """
     Unified Arabic text processing function.
 
     Args:
         text: Raw Arabic text (with or without tashkeel)
-        words_per_line: Number of words per line for wrapping
+        words_per_line: Word-wrap target.
+        mode: ``'visual'`` (default — legacy) returns the reshape+bidi
+              presentation forms so the old PIL ``ImageDraw.text()`` path
+              still works.  ``'logical'`` returns the original Arabic in
+              logical order, ready to feed to HarfBuzz (which handles
+              both reshape and bidi internally based on the script tag).
 
     Returns:
-        Tuple of (processed_text_for_display, num_lines, word_count)
+        Tuple of (processed_text, num_lines, word_count).
     """
     if not text or not text.strip():
         return "", 0, 0
@@ -446,56 +652,222 @@ def process_arabic_text(text, words_per_line=4):
     # Step 1: Clean text
     cleaned = text.replace('\ufeff', '').replace('\u200b', '').strip()
 
-    # Step 2: Apply Arabic reshaping to FULL text first (preserves tashkeel + ligatures)
-    reshaped_full = ARABIC_RESHAPER.reshape(cleaned)
-
-    # Step 3: Apply BiDi to FULL text (ensures correct RTL)
-    visual_full = get_display(reshaped_full)
-
-    # Step 4: Split into LOGICAL words (from original cleaned text) and wrap
+    # Step 2: Split into LOGICAL words and wrap
     logical_words = cleaned.split()
     total_words = len(logical_words)
     if total_words == 0:
-        return visual_full, 1, 0
+        return cleaned, 1, 0
 
-    # Wrap logical words into lines
     logical_lines = []
     for i in range(0, total_words, max(1, int(words_per_line))):
         logical_lines.append(' '.join(logical_words[i:i + words_per_line]))
 
-    # Step 5: Apply reshape+bidi to each logical line to preserve tashkeel
+    if mode == 'logical':
+        # For HarfBuzz shaping — keep the original logical text; the
+        # shaper applies the presentation forms and RTL positioning
+        # itself.
+        wrapped = '\n'.join(logical_lines)
+        logging.info(f"📊 Text processed (logical): {total_words} words -> {len(logical_lines)} lines")
+        return wrapped, len(logical_lines), total_words
+
+    # 'visual' mode — apply arabic-reshaper + python-bidi per line so
+    # PIL's text() can render the result.
     visual_lines = []
     for ln in logical_lines:
         reshaped_ln = ARABIC_RESHAPER.reshape(ln)
         visual_ln = get_display(reshaped_ln)
         visual_lines.append(visual_ln)
-
     wrapped = '\n'.join(visual_lines)
-    logging.info(f"📊 Text processed: {total_words} words -> {len(visual_lines)} lines")
+    logging.info(f"📊 Text processed (visual): {total_words} words -> {len(visual_lines)} lines")
     return wrapped, len(visual_lines), total_words
 
 # =============================================================================
 # STEP 7: UNIFIED TEXT RENDERING (NEW: single function using WORKING_FONT)
 # =============================================================================
 
+
+def _hex_to_rgba(hex_color, default=(255, 255, 255, 255)):
+    s = (hex_color or '').strip().lstrip('#')
+    if len(s) == 3:
+        s = ''.join([c * 2 for c in s])
+    if len(s) == 6:
+        return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16), 255)
+    if len(s) == 8:
+        return (int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16), int(s[6:8], 16))
+    return default
+
+
+def _apply_glow_to_layer(layer_rgba, glow_color, glow_radius):
+    """Return a *halo-only* RGBA image: the original layer's alpha tinted
+    with ``glow_color`` and Gaussian-blurred.  The caller composites
+    this *underneath* the original text layer so the main text stays
+    sharp on top.
+    """
+    arr = np.array(layer_rgba)
+    gr, gg, gb, _ = _hex_to_rgba(glow_color, default=(255, 215, 0, 255))
+    alpha = arr[..., 3].astype(np.float32) / 255.0
+    halo = np.zeros_like(arr)
+    halo[..., 0] = gr
+    halo[..., 1] = gg
+    halo[..., 2] = gb
+    halo[..., 3] = (alpha * 255).astype(np.uint8)
+    halo_img = Image.fromarray(halo, 'RGBA')
+    halo_img = halo_img.filter(ImageFilter.GaussianBlur(radius=glow_radius))
+    return halo_img
+
+
+def _dilate_alpha_for_stroke(text_layer_rgba, stroke_radius):
+    """Return a new RGBA layer where the text's alpha is dilated by
+    ``stroke_radius`` pixels (MaxFilter) and re-tinted black/transparent
+    depending on the existing alpha values.
+    """
+    alpha = text_layer_rgba.split()[3]
+    dilated = alpha.filter(ImageFilter.MaxFilter(2 * int(stroke_radius) + 1))
+    dilated_rgba = Image.new('RGBA', text_layer_rgba.size, (0, 0, 0, 0))
+    dilated_rgba.putalpha(dilated)
+    # Black-fill the dilated shape; alpha=255 where dilated, 0 elsewhere.
+    arr = np.array(dilated_rgba)
+    arr[..., 0] = 0
+    arr[..., 1] = 0
+    arr[..., 2] = 0
+    arr[..., 3] = dilated
+    return Image.fromarray(arr, 'RGBA')
+
+
+def _render_with_shaping(
+    processed_text, num_lines, fontsize, color, stroke_color, stroke_width,
+    target_width, font_path, supersample, shadow, shadow_offset, shadow_color,
+    glow_color, glow_radius, shape_text, render_shaped_to_canvas,
+):
+    """Render ``processed_text`` (logical order) using HarfBuzz+FreeType.
+
+    The output matches the legacy PIL renderer in dimensions and
+    effects (drop shadow, soft glow, stroke), but works for any Arabic
+    font.
+    """
+    from quran_reels.services.shaping import ShapedLine  # type: ignore
+
+    ss = max(1, int(supersample))
+    fill_rgba = _hex_to_rgba(color)
+    stroke_rgba = _hex_to_rgba(stroke_color)
+    shadow_rgba = _hex_to_rgba(shadow_color, default=(0, 0, 0, 128))
+
+    line_height = int(fontsize * 1.6)
+    padding = 50
+    img_height = max(300, num_lines * line_height + 2 * padding)
+    img_width = target_width + 2 * padding
+    big_w, big_h = img_width * ss, img_height * ss
+
+    # Shape every line at the supersample resolution
+    big_fontsize_px = fontsize * ss
+    lines = processed_text.split('\n')
+    shaped_lines: list = []
+    for ln in lines:
+        if not ln.strip():
+            shaped_lines.append(None)
+            continue
+        try:
+            shaped_lines.append(shape_text(ln, font_path, big_fontsize_px))
+        except Exception as e:
+            logging.warning(f"Shaping failed for line ({ln!r}): {e}")
+            shaped_lines.append(None)
+
+    def _compose(fill_rgb, line_offset_x=0, line_offset_y=0):
+        """Render all shaped lines onto a fresh transparent canvas."""
+        canvas = Image.new('RGBA', (big_w, big_h), (0, 0, 0, 0))
+        pen_y = (padding + line_height // 2) * ss
+        for sl in shaped_lines:
+            if sl is None or not sl.glyphs:
+                pen_y += line_height * ss
+                continue
+            # RTL: pen starts at the right edge, less the line width / 2
+            # to center the line within the image.
+            pen_x = big_w // 2 + sl.width / 2 + line_offset_x
+            baseline = pen_y + line_offset_y
+            render_shaped_to_canvas(
+                sl, canvas, (pen_x, baseline), fill_rgb=fill_rgb
+            )
+            pen_y += line_height * ss
+        return canvas
+
+    # ---- Build layers from bottom to top ----
+    #   shadow  →  glow  →  stroke  →  main text
+    # Each ``alpha_composite(top, over=bottom)`` puts ``top`` above.
+    layers_bottom_up = []
+
+    # 1) Shadow (lowest)
+    if shadow and shadow_color:
+        layers_bottom_up.append(
+            _compose(shadow_rgba, line_offset_x=shadow_offset * ss,
+                     line_offset_y=shadow_offset * ss)
+        )
+
+    # 2) Glow
+    main_canvas = _compose(fill_rgba)
+    if glow_color:
+        glow_layer = _apply_glow_to_layer(main_canvas, glow_color,
+                                           glow_radius * ss)
+        layers_bottom_up.append(glow_layer)
+
+    # 3) Stroke (dilated alpha of the main text, tinted with stroke_color)
+    if stroke_width and stroke_width > 0 and stroke_rgba[3] > 0:
+        stroke_layer = _dilate_alpha_for_stroke(main_canvas, stroke_width * ss)
+        sr, sg, sb, sa = stroke_rgba
+        s_arr = np.array(stroke_layer)
+        s_arr[..., 0] = sr
+        s_arr[..., 1] = sg
+        s_arr[..., 2] = sb
+        s_arr[..., 3] = (s_arr[..., 3].astype(np.uint16) * sa // 255).astype(np.uint8)
+        layers_bottom_up.append(Image.fromarray(s_arr, 'RGBA'))
+
+    # 4) Main text (top)
+    layers_bottom_up.append(main_canvas)
+
+    # Composite bottom-up
+    big = layers_bottom_up[0]
+    for layer in layers_bottom_up[1:]:
+        big = Image.alpha_composite(big, layer)
+
+    # Downsample
+    if ss > 1:
+        img = big.resize((img_width, img_height), Image.LANCZOS)
+    else:
+        img = big
+
+    logging.info(
+        f"✅ Shaped image rendered: {img_width}x{img_height}px, {num_lines} lines, "
+        f"font={os.path.basename(font_path)}, ss={ss}, "
+        f"shadow={bool(shadow)}, glow={bool(glow_color)}, stroke={stroke_width}"
+    )
+    return img
+
+
 def render_arabic_to_pil_image(text, fontsize=80, color='#FFFFFF',
                                 stroke_color='#000000', stroke_width=3,
                                 words_per_line=4, target_width=920, font_path=None,
                                 supersample=2,
                                 shadow=True, shadow_offset=4, shadow_color='#00000080',
-                                glow_color=None, glow_radius=6):
+                                glow_color=None, glow_radius=6,
+                                use_shaping=True):
     """
     Render Arabic text to a PIL RGBA Image with broadcast-grade quality.
 
-    Pipeline:
-      1.  Reshape + BiDi the input text.
-      2.  Render at `supersample` x resolution (default 2x) into a transparent canvas
-          using Pillow's native anti-aliased `stroke_width` / `stroke_fill`.
-      3.  (Optional) Drop shadow — draw a black copy at (+offset, +offset) below the
-          main layer.
-      4.  (Optional) Soft glow — Gaussian-blur a colorized copy of the text and
-          composite it underneath (used by the `ramadan` template).
-      5.  Downsample to the target size with `Image.LANCZOS`.
+    Pipeline (HarfBuzz + FreeType shaping, default ``use_shaping=True``):
+      1.  Word-wrap the input (logical order).
+      2.  For each line, run HarfBuzz (``uharfbuzz``) over the *logical*
+          text — it applies presentation-form substitution (GSUB) and
+          GPOS positioning using the font's own tables, so any Arabic
+          font renders correctly (not just Amiri).
+      3.  Rasterise each shaped glyph with FreeType and composite onto
+          a transparent canvas.
+      4.  Apply per-glyph stroke (FreeType's ``FT_Stroker``) and the
+          drop-shadow / glow post-passes at the supersample resolution.
+      5.  Downsample to the target size with ``Image.LANCZOS``.
+
+    The legacy ``use_shaping=False`` path falls back to PIL's
+    ``ImageDraw.text()`` with the arabic-reshaper / python-bidi
+    pipeline.  This only works for fonts that bake presentation forms
+    into their cmap (e.g. Amiri); other fonts will render as boxes.
 
     Args:
         text:            Raw Arabic text (Uthmani or plain).
@@ -514,18 +886,61 @@ def render_arabic_to_pil_image(text, fontsize=80, color='#FFFFFF',
         shadow_color:    Shadow color (hex with alpha, e.g. '#00000080').
         glow_color:      If set, apply a colored Gaussian-blur glow (e.g. '#FFD700').
         glow_radius:     Glow blur radius.
+        use_shaping:     ``True`` (default) → HarfBuzz + FreeType path.
+                         ``False`` → legacy PIL path (Amiri only).
 
     Returns:
         PIL Image object (RGBA).
     """
     # Step 1 — process Arabic text
-    processed_text, num_lines, word_count = process_arabic_text(text, words_per_line)
+    if use_shaping:
+        processed_text, num_lines, word_count = process_arabic_text(
+            text, words_per_line, mode='logical'
+        )
+    else:
+        processed_text, num_lines, word_count = process_arabic_text(
+            text, words_per_line, mode='visual'
+        )
 
     if not processed_text:
         return Image.new('RGBA', (target_width, 100), (0, 0, 0, 0))
 
     # Step 2 — load font
     f_path = font_path or WORKING_FONT
+    if use_shaping and f_path and os.path.exists(f_path):
+        # Lazy import: shaping service depends on uharfbuzz + freetype-py,
+        # which are optional.  Fall through to the legacy path if either
+        # import fails.
+        try:
+            from quran_reels.services.shaping import (
+                shape_text, render_shaped_to_canvas,
+            )
+            return _render_with_shaping(
+                processed_text=processed_text,
+                num_lines=num_lines,
+                fontsize=fontsize,
+                color=color,
+                stroke_color=stroke_color,
+                stroke_width=stroke_width,
+                target_width=target_width,
+                font_path=f_path,
+                supersample=supersample,
+                shadow=shadow,
+                shadow_offset=shadow_offset,
+                shadow_color=shadow_color,
+                glow_color=glow_color,
+                glow_radius=glow_radius,
+                shape_text=shape_text,
+                render_shaped_to_canvas=render_shaped_to_canvas,
+            )
+        except ImportError as e:
+            logging.warning(
+                f"HarfBuzz/FreeType shaping unavailable ({e}); falling back "
+                f"to legacy PIL path.  Install uharfbuzz + freetype-py to "
+                f"unlock all Arabic fonts."
+            )
+
+    # ---- Legacy path (PIL ImageDraw.text) ----
     try:
         font = ImageFont.truetype(f_path, fontsize * supersample)
     except Exception:
@@ -632,8 +1047,8 @@ def render_arabic_to_pil_image(text, fontsize=80, color='#FFFFFF',
 # TEMPLATES, QUALITY_PRESETS, OUTPUT_FORMATS, RECITERS_MAP, VERSE_COUNTS,
 # SURAH_NAMES, VIDEO_TRANSITIONS, FEATURE_FLAGS, and the BackgroundRotator
 # class are all imported from quran_reels.* at the top of this file.
-TARGET_W = 1080
-TARGET_H = 1920
+TARGET_W = _env("QURAN_TARGET_W", 1080, int)
+TARGET_H = _env("QURAN_TARGET_H", 1920, int)
 
 # =============================================================================
 # STEP 10: IMPORTS FOR VIDEO PROCESSING
@@ -1382,11 +1797,33 @@ def process_single_ayah_ffmpeg(args):
     Uses BackgroundRotator to prevent video repetition.
     """
     (reciter_id, surah, ayah, idx, template, bg_style, selected_font,
-     show_text, text_animation, auto_text_color, quality, is_last) = args
+     show_text, text_animation, auto_text_color, quality, reciter_speed,
+     is_last) = args
 
     try:
         # Download audio (no trimming, faster)
         audio_path = download_audio(reciter_id, surah, ayah, idx)
+        # Feature: reciter_speed — apply ffmpeg atempo to speed up / slow
+        # down the recitation without changing pitch.  Done as a separate
+        # pre-pass so the rest of the pipeline sees a normal mp3 file and
+        # doesn't need to know about tempo.  atempo is limited to [0.5,
+        # 2.0] per pass, so values outside that range are clamped.
+        if reciter_speed and reciter_speed != 1.0:
+            atempo = max(0.5, min(2.0, float(reciter_speed)))
+            sped_path = os.path.join(TEMP_DIR, f'audio_{idx:03d}_sped.mp3')
+            cmd = [
+                FFMPEG_EXE, '-y', '-hide_banner', '-loglevel', 'error',
+                '-i', audio_path,
+                '-af', f'atempo={atempo:.3f}',
+                '-c:a', 'libmp3lame', '-b:a', '192k',
+                sped_path,
+            ]
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            if res.returncode == 0 and os.path.exists(sped_path):
+                audio_path = sped_path
+                logging.debug(f"Segment {idx}: reciter_speed={reciter_speed} (atempo={atempo:.3f})")
+            else:
+                logging.warning(f"Segment {idx}: atempo pre-pass failed, using original audio: {res.stderr.strip()}")
         duration = get_audio_duration_ffprobe(audio_path)
         logging.debug(f"Segment {idx}: Audio duration = {duration:.2f}s")
 
@@ -1449,13 +1886,95 @@ def process_single_ayah_ffmpeg(args):
         raise
 
 # =============================================================================
+# STEP 16.5: BISMILLAH TITLE-CARD HELPERS
+# =============================================================================
+# Feature: prepend a 1.8s "Bismillah ar-Rahman ar-Raheem" card before ayah 1
+# of any surah.  Skipped for surahs in BISMILLAH_SKIP_SURAHS (Al-Fatihah,
+# At-Tawbah) per the standard recitation tradition.
+
+def _generate_silence_mp3(output_path, duration_sec, sample_rate=44100):
+    """Render ``duration_sec`` of stereo silence to an mp3 file.
+
+    Uses ffmpeg's ``anullsrc`` so no external asset is needed.  Matches the
+    sample rate / channel layout of the downloaded recitation mp3s
+    (44.1 kHz, stereo) so it can drop in next to them without re-encoding.
+    """
+    cmd = [
+        FFMPEG_EXE, '-y', '-hide_banner', '-loglevel', 'error',
+        '-f', 'lavfi',
+        '-i', f'anullsrc=channel_layout=stereo:sample_rate={sample_rate}',
+        '-t', f'{duration_sec:.3f}',
+        '-c:a', 'libmp3lame', '-b:a', '128k',
+        output_path,
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0 or not os.path.exists(output_path):
+        raise RuntimeError(f"Silence mp3 generation failed: {res.stderr.strip()}")
+    return output_path
+
+
+def _build_bismillah_segment(template, selected_font, quality, bg_paths):
+    """Build a 1.8s title-card segment for Bismillah ar-Rahman ar-Raheem.
+
+    Returns ``(ayah_num, segment_path)`` with ``ayah_num=0`` so the existing
+    sort-by-ayah-number logic places it before ayah 1.
+    """
+    bismillah_png = os.path.join(TEMP_DIR, 'text_000_bismillah.png')
+    bismillah_audio = os.path.join(TEMP_DIR, 'audio_000_bismillah.mp3')
+    bismillah_segment = os.path.join(TEMP_DIR, 'segment_000_bismillah.mp4')
+
+    # 1) Render the Bismillah text using the same template-driven renderer
+    #    the regular ayahs use, so font / glow / color stay consistent.
+    template_config = TEMPLATES.get(template, TEMPLATES['normal'])
+    template_color = template_config.get('text_color', 'white')
+    # Bismillah is a title card: use the FIRST background we were handed so
+    # it visually leads into ayah 1 (which would otherwise pick a new bg).
+    if bg_paths:
+        first_bg = bg_paths[0]
+    else:
+        bg = get_next_background(template_config['bg_style'], count=1)
+        # get_next_background returns a string for count=1 and a list for count>1
+        first_bg = bg if isinstance(bg, str) else bg[0]
+    text_color, stroke_color = get_contrasting_text_color(
+        first_bg, template_color, auto_detect=template_config.get('auto_text_color', True)
+    )
+    render_text_to_png(BISMILLAH_TEXT, template, bismillah_png,
+                       selected_font=selected_font, quality=quality,
+                       text_color=text_color, stroke_color=stroke_color)
+
+    # 2) Generate the silence audio track.
+    _generate_silence_mp3(bismillah_audio, BISMILLAH_DURATION_SEC)
+
+    # 3) Build the segment with a simple fade-in (no slide/zoom on a static
+    #    title card) and an outro fade (is_last=False) so the crossfade
+    #    into ayah 1 lands smoothly.
+    text_size = None
+    try:
+        from PIL import Image as _PILImage
+        with _PILImage.open(bismillah_png) as _img:
+            text_size = _img.size
+    except Exception:
+        text_size = None
+    animation_filter = get_ffmpeg_text_animation_filter(
+        'fade_in', BISMILLAH_DURATION_SEC, text_size=text_size)
+    build_segment_ffmpeg(
+        [first_bg], bismillah_png, bismillah_audio, BISMILLAH_DURATION_SEC,
+        bismillah_segment, show_text=True,
+        text_animation_filter=animation_filter, is_last=False,
+    )
+    logging.info(f"✅ Bismillah title card built: {bismillah_segment}")
+    return (0, bismillah_segment)
+
+
+# =============================================================================
 # STEP 17: MAIN VIDEO BUILDER
 # =============================================================================
 
 def build_video(reciter_id, surah, start_ayah, end_ayah=None,
                 quality='medium', format_type='reels', template='normal',
                 person_name='', selected_font='random', target_duration_seconds=None,
-                show_text=True):
+                show_text=True, include_bismillah=False, reciter_speed=1.0,
+                transition_style_override=None):
     """
     Main video builder - optimized and refactored.
     No clear_outputs() needed - uses temp directory.
@@ -1474,6 +1993,10 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
         quality_config = QUALITY_PRESETS.get(quality, QUALITY_PRESETS['medium'])
         format_config = OUTPUT_FORMATS.get(format_type, OUTPUT_FORMATS['reels'])
         template_config = TEMPLATES.get(template, TEMPLATES['normal'])
+        if transition_style_override:
+            # Caller (UI/API) picked an explicit style; shallow-copy so we
+            # don't mutate the shared TEMPLATES dict.
+            template_config = {**template_config, 'transition_style': transition_style_override}
         bg_style = template_config['bg_style']
 
         # Validation
@@ -1514,12 +2037,40 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
 
         logging.info(f"Using text animation: {text_animation}, transition: {video_transition}")
 
+        # Feature: target_duration_seconds — cap the number of ayahs so the
+        # final video won't exceed the user's requested length.  Iterates
+        # through candidate ayahs in order, summing their (cached) audio
+        # durations, and stops just before the running total would exceed
+        # the cap.  Always keeps at least the first ayah.  Uncached files
+        # fall back to a conservative 5 s estimate so the cap isn't
+        # over-strict on the first run.
+        if target_duration_seconds and target_duration_seconds > 0:
+            cumulative = 0.0
+            new_last = start_ayah - 1
+            for ayah in range(start_ayah, last_ayah + 1):
+                d = _estimate_ayah_duration(reciter_id, surah, ayah)
+                if new_last >= start_ayah and cumulative + d > target_duration_seconds:
+                    break
+                cumulative += d
+                new_last = ayah
+            if new_last < start_ayah:
+                new_last = start_ayah
+            if new_last < last_ayah:
+                trimmed = last_ayah - new_last
+                add_log(
+                    f"target_duration_seconds={target_duration_seconds}s capped last_ayah "
+                    f"({last_ayah} -> {new_last}, dropped {trimmed} ayahs, "
+                    f"~{cumulative:.1f}s)"
+                )
+                last_ayah = new_last
+                total = last_ayah - start_ayah + 1
+
         # Prepare args - now includes rotation index for variety + quality preset
         # + is_last flag (Phase 2 T2.5) so the last segment skips the outro fade.
         total_ayahs = last_ayah - start_ayah + 1
         ayah_args = [
             (reciter_id, surah, ayah, idx, template, bg_style, selected_font, show_text,
-             text_animation, auto_text_color, quality, idx == total_ayahs)
+             text_animation, auto_text_color, quality, reciter_speed, idx == total_ayahs)
             for idx, ayah in enumerate(range(start_ayah, last_ayah + 1), start=1)
         ]
 
@@ -1548,7 +2099,22 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
 
         # Process in parallel
         add_log('Processing ayat in parallel...')
+
+        # Feature: Bismillah title card.  Built sequentially (it's just one
+        # short 1.8s render) so the parallel pool doesn't waste a worker on
+        # it and the xfade chain at the end naturally crossfades Bismillah
+        # into ayah 1.  Skipped for surahs in BISMILLAH_SKIP_SURAHS.
         segment_results = []
+        if (include_bismillah
+                and start_ayah == 1
+                and surah not in BISMILLAH_SKIP_SURAHS):
+            update_progress(11, 'جاري تحضير البسملة...')
+            add_log('Building Bismillah title card...')
+            bismillah_result = _build_bismillah_segment(
+                template, selected_font, quality, bg_paths=None)
+            segment_results.append(bismillah_result)
+        elif include_bismillah and surah in BISMILLAH_SKIP_SURAHS:
+            add_log(f"Skipping Bismillah for surah {surah} (in BISMILLAH_SKIP_SURAHS)")
 
         if max_workers > 1:
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -1591,15 +2157,8 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
                 temp_output_path
             ]
         else:
-            # Multiple segments - use crossfade for professional transitions
+            # Multiple segments - decide whether to xfade any pair, and which
             try:
-                # Phase 2 (T2.4): Honor the template's `transition` field and use
-                # the *actual* per-segment durations (probed via ffprobe) instead
-                # of the previous hardcoded 5 s trim and 4.5 s xfade offset.
-                # Each segment is trimmed to its real length; the xfade offset
-                # is cumulative-duration of preceding segments - xfade_d.
-                xfade_d = 0.5
-
                 # Probe each segment's actual duration
                 seg_durations = []
                 for _, seg_path in segment_results:
@@ -1616,57 +2175,97 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
                 trans_spec = VIDEO_TRANSITIONS.get(trans_name, VIDEO_TRANSITIONS.get('fade'))
                 # trans_spec['type'] is the xfade transition key, e.g. 'fade', 'wipeleft'
                 xfade_name = trans_spec['type']
-                logging.info(f"Using crossfade transition: {trans_name!r} (xfade={xfade_name})")
+                xfade_d = trans_spec.get('duration', 0.5)
 
-                filter_complex = []
-                # Trim each segment to its actual duration
-                for i, (_, seg_path) in enumerate(segment_results):
-                    seg_d = seg_durations[i]
-                    filter_complex.append(
-                        f"[{i}:v]trim=duration={seg_d:.3f},setpts=PTS-STARTPTS[v{i}];"
-                        f"[{i}:a]atrim=duration={seg_d:.3f},asetpts=PTS-STARTPTS[a{i}]"
-                    )
-
-                # Crossfade between consecutive segments using computed offsets.
-                # Each ayah overlaps the next by xfade_d, so the offset of the
-                # (i+1)-th xfade is:
-                #   sum(durations[0:i+1]) - (i+1) * xfade_d
-                # i.e. cumulative_duration minus xfade_d for THIS xfade plus
-                # xfade_d for every prior xfade (one per prior overlap).
-                cumulative = 0.0
-                for i in range(len(segment_results) - 1):
-                    cumulative += seg_durations[i]
-                    offset = max(0.0, cumulative - (i + 1) * xfade_d)
-                    filter_complex.append(
-                        f"[v{i}][v{i+1}]xfade=transition={xfade_name}:"
-                        f"duration={xfade_d}:offset={offset:.3f}[v{i+1}];"
-                        f"[a{i}][a{i+1}]acrossfade=d={xfade_d}[a{i+1}]"
-                    )
-
-                # Final output — null filters are required so we can map both
-                # video and audio streams to the named output labels.
-                last_v = f"v{len(segment_results) - 1}"
-                last_a = f"a{len(segment_results) - 1}"
-                filter_complex.append(
-                    f"[{last_v}]null[outv];"
-                    f"[{last_a}]anull[outa]"
+                # Resolve transition_style (Feature 3: smart transitions)
+                # - cinematic : no xfade between segments; rely on the per-
+                #               segment fade-in/out for the cinematic look
+                # - cut       : hard cuts only, no xfade at all
+                # - dynamic   : xfade between every consecutive pair (default)
+                # - smooth    : xfade every Nth pair, hard cut the rest
+                trans_style = template_config.get('transition_style', 'cinematic')
+                n = len(segment_results)
+                is_xfade_pair = _compute_xfade_pairs(trans_style, n, xfade_d)
+                any_xfade = any(is_xfade_pair)
+                logging.info(
+                    f"Using transition style: {trans_style!r} "
+                    f"({sum(is_xfade_pair)}/{n-1} pairs will xfade with {xfade_name})"
                 )
 
-                filter_complex_str = ';'.join(filter_complex)
+                if not any_xfade:
+                    # No xfade anywhere — fall back to the simple concat demuxer
+                    # (hard cuts).  This path is identical to the single-segment
+                    # branch above, just with more inputs.
+                    cmd_concat = [
+                        FFMPEG_EXE, "-y", "-f", "concat", "-safe", "0", "-i", list_path,
+                        "-c:v", "libx264", "-preset", "ultrafast", "-threads", "4",
+                        "-c:a", "aac", "-b:a", "192k",
+                        "-movflags", "+faststart",
+                        temp_output_path
+                    ]
+                else:
+                    # xfade d=0 produces invalid output, so the "smooth" style
+                    # pre-merges hard-cut runs into single files via the
+                    # concat demuxer, then runs the xfade chain on the
+                    # resulting list of chunks.  Single-segment chunks are
+                    # used as-is, multi-segment chunks get a fresh merged mp4.
+                    chunk_groups = _split_into_chunks(is_xfade_pair)
+                    chunk_paths, chunk_durations = _premerge_chunks(
+                        chunk_groups, segment_results, seg_durations
+                    )
+                    # Rebuild the in-flight lists as chunk-shaped and force
+                    # every pair to be an xfade (chunks are the units now).
+                    segment_results = [(i, p) for i, p in enumerate(chunk_paths)]
+                    seg_durations = chunk_durations
+                    is_xfade_pair = [True] * (len(segment_results) - 1)
 
-                inputs = []
-                for _, seg_path in segment_results:
-                    inputs.extend(["-i", seg_path])
+                    filter_complex = []
+                    # Trim each segment to its actual duration
+                    for i, (_, seg_path) in enumerate(segment_results):
+                        seg_d = seg_durations[i]
+                        filter_complex.append(
+                            f"[{i}:v]trim=duration={seg_d:.3f},setpts=PTS-STARTPTS[v{i}];"
+                            f"[{i}:a]atrim=duration={seg_d:.3f},asetpts=PTS-STARTPTS[a{i}]"
+                        )
 
-                cmd_concat = [
-                    FFMPEG_EXE, "-y"
-                ] + inputs + [
-                    "-filter_complex", filter_complex_str,
-                    "-map", "[outv]", "-map", "[outa]",
-                    "-c:v", "libx264", "-preset", "ultrafast", "-threads", "4",
-                    "-c:a", "aac", "-b:a", "192k",
-                    "-movflags", "+faststart",
-                    temp_output_path
+                    # Crossfade between consecutive chunks using computed offsets.
+                    # Each chunk overlaps the next by xfade_d, so the offset of
+                    # the (i+1)-th xfade is:
+                    #   sum(durations[0:i+1]) - (i+1) * xfade_d
+                    cumulative = 0.0
+                    for i in range(len(segment_results) - 1):
+                        cumulative += seg_durations[i]
+                        offset = max(0.0, cumulative - (i + 1) * xfade_d)
+                        filter_complex.append(
+                            f"[v{i}][v{i+1}]xfade=transition={xfade_name}:"
+                            f"duration={xfade_d}:offset={offset:.3f}[v{i+1}];"
+                            f"[a{i}][a{i+1}]acrossfade=d={xfade_d}[a{i+1}]"
+                        )
+
+                    # Final output — null filters are required so we can map both
+                    # video and audio streams to the named output labels.
+                    last_v = f"v{len(segment_results) - 1}"
+                    last_a = f"a{len(segment_results) - 1}"
+                    filter_complex.append(
+                        f"[{last_v}]null[outv];"
+                        f"[{last_a}]anull[outa]"
+                    )
+
+                    filter_complex_str = ';'.join(filter_complex)
+
+                    inputs = []
+                    for _, seg_path in segment_results:
+                        inputs.extend(["-i", seg_path])
+
+                    cmd_concat = [
+                        FFMPEG_EXE, "-y"
+                    ] + inputs + [
+                        "-filter_complex", filter_complex_str,
+                        "-map", "[outv]", "-map", "[outa]",
+                        "-c:v", "libx264", "-preset", "ultrafast", "-threads", "4",
+                        "-c:a", "aac", "-b:a", "192k",
+                        "-movflags", "+faststart",
+                        temp_output_path
                 ]
 
             except Exception as e:
@@ -1783,6 +2382,13 @@ def generate_video():
     selected_font = data.get('selectedFont', 'random')
     target_duration_seconds = data.get('targetDurationSeconds')
     show_text = data.get('showText', True)
+    include_bismillah = data.get('includeBismillah', False)
+    reciter_speed = data.get('reciterSpeed', 1.0)
+    try:
+        reciter_speed = float(reciter_speed)
+    except (TypeError, ValueError):
+        reciter_speed = 1.0
+    transition_style_override = data.get('transitionStyle') or None
 
     reset_progress()
 
@@ -1790,7 +2396,7 @@ def generate_video():
         target=build_video,
         args=(reciter_id, surah, start_ayah, end_ayah, quality,
               format_type, template, person_name, selected_font, target_duration_seconds,
-              show_text),
+              show_text, include_bismillah, reciter_speed, transition_style_override),
         daemon=True
     )
     thread.start()
@@ -1882,4 +2488,9 @@ if __name__ == '__main__':
     init_bg_cache()
 
     # webbrowser.open('http://127.0.0.1:5000')
-    app.run(host='127.0.0.1', port=5000, debug=False, threaded=True)
+    app.run(
+        host=_env("QURAN_FLASK_HOST", "127.0.0.1"),
+        port=_env("QURAN_FLASK_PORT", 5000, int),
+        debug=_env("QURAN_FLASK_DEBUG", False, lambda s: s.lower() in ("1", "true", "yes", "on")),
+        threaded=True,
+    )

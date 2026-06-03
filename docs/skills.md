@@ -457,11 +457,11 @@ Filter graph (1 background, 1 ayah):
 | `masjid`  | masjid | `#FFFFFF` | Amiri-Bold | 1.10 | `#FFFFFF80` r=4 | white + soft moonlit halo |
 | `islamic` | islamic | `#FFFFFF` | Amiri-Bold | 1.10 | — | white + heavy drop shadow |
 
-> ⚠ **Font constraint (PIL limitation):** Pillow's `ImageFont.text()` does **not** apply OpenType GSUB contextual substitution. Arabic shaping therefore requires fonts with pre-composed presentation forms (U+FE70–FEFF, U+FB50–FDFF) baked into the cmap. **Only Amiri-Bold.ttf and Amiri-Regular.ttf in `fonts/` have sufficient coverage** (97.2% / 88.8%). The other 15 fonts (Lateef, ElMessiri, Dubai, Scheherazade, Tajawal, etc.) only contain base letters and rely on HarfBuzz to compose shapes — they render as boxes when used by PIL.
+> **Fonts (HarfBuzz + FreeType pipeline):** Arabic text rendering now goes through `quran_reels.services.shaping`, which uses **HarfBuzz** (`uharfbuzz`) for OpenType shaping — ligatures, tashkeel placement, kashida, GPOS positioning — and **FreeType** (`freetype-py`) to rasterise each shaped glyph. This unlocks **every font in `fonts/`** (Almadinah, Amiri, DigitalKhatt, DigitalMadina, Dubai, Elgharib, Lateef, Letellka, RanaKufi, Tajawal, Uthman, Zain), not just the two Amiri files that PIL could render directly.
 >
-> The constant `PIL_COMPATIBLE_ARABIC_FONTS` (`main.py:413`) is the explicit allow-list. `get_random_font()` (`main.py:419`) is now restricted to this list so picking "Random" in the UI can never silently land on a broken font.
+> `PIL_COMPATIBLE_ARABIC_FONTS` (`main.py:548`) is now a dynamic list of every .ttf/.otf in `fonts/` that FreeType can open. `get_random_font()` (`main.py:567`) picks from this list. The legacy PIL path (`use_shaping=False`) is kept as a fallback for non-Arabic text or testing but is no longer the default.
 >
-> `masjid` and `islamic` were originally wired to Lateef-Bold/ElMessiri-Bold (Phase 0.5 design) but were reverted to Amiri in Phase 1. The visual differentiation now comes from glow + drop shadow + bg_style.
+> Dependencies added in this phase: `uharfbuzz==0.54.1` and `freetype-py==2.5.1` in `requirements.txt`.
 
 ### 8.3.1 Phase 2 Animations & Transitions (`main.py:60-67, 1452-1531, 1738-1839, 2104-2140`)
 

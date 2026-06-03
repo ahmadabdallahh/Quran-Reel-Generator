@@ -7,3 +7,6 @@ Pillow==10.4.0
 numpy>=2.0.0
 urllib3==2.2.3
 werkzeug==3.0.3
+python-dotenv==1.1.1
+uharfbuzz==0.54.1
+freetype-py==2.5.1
