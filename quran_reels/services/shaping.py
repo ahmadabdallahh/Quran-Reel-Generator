@@ -34,14 +34,57 @@ from PIL import Image
 # Dubai) omit from their cmap.  Quranic Uthmani text uses alef wasla
 # (U+0671) and the small Quranic annotation marks (U+06D6-06DE) at the
 # start of many nouns and after aayah endings; rendering these as
-# ``.notdef`` (an empty rectangle) looks broken.  We detect this once
-# per font and use a *per-cluster* fallback to Amiri (which has the
-# full Quranic Uthmani character set) for the missing glyphs only —
-# this preserves the primary font's look for every character it
-# actually supports.  See BUG 2.
+# ``.notdef`` (an empty rectangle) looks broken.
+#
+# Two layers of defence are used together:
+#
+#   1.  ``select_rendering_font()`` (see below) checks the *whole* text
+#       for coverage at the chosen font, and if any required codepoint
+#       is missing, transparently switches to a full-coverage Quranic
+#       font (Amiri-Bold by default).  This is the *primary* fix — it
+#       keeps the entire line in a single font so GSUB ligatures like
+#       ﷲ and ﷽ form correctly.
+#
+#   2.  The per-cluster fallback below is a *safety net* for the rare
+#       case where the user really did pick a partial-coverage font and
+#       we couldn't find any full-coverage replacement.  It re-shapes
+#       only the missing codepoints with Amiri, so the rest of the line
+#       keeps the user's chosen style.  Note: this *will* break
+#       ligatures that span the missing char, but it is strictly better
+#       than rendering a tofu box.
 _FALLBACK_FONT_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "fonts", "Amiri-Bold.ttf"
 )
+
+# Fonts known to ship the full Quranic Uthmani character set (alef
+# wasla, the small Quranic marks U+06D6-06DE, the ﷲ / ﷽ ligatures,
+# etc.).  ``select_rendering_font`` consults this list when the
+# user-chosen font is missing required codepoints; the first one found
+# on disk wins.
+#
+# Ordered so that visually-similar styles are tried first: Quranic
+# Uthmani fonts come before Naskh, Naskh before Kufi.  This matters
+# because when the user picks a Uthmani-style font (Almadinah,
+# Uthman TN1, etc.) and we have to fall back, falling back to
+# DigitalKhatt (also Uthmani) keeps the *visual style* close to the
+# original choice — much less jarring than jumping all the way to
+# Amiri's Naskh.
+_FULL_COVERAGE_FONTS = [
+    # Uthmani / Quranic madinah style (same style as Almadinah, Uthman TN1)
+    "DigitalKhatt-OldMadina.otf",
+    "DigitalMadina-NON V1.ttf",
+    "Elgharib-KFGQPCHafs.V10.ttf",
+    # Naskh classic (used by Lateef, Amiri)
+    "Lateef-Bold.ttf",
+    "Amiri-Bold.ttf",
+    "Amiri-Regular.ttf",
+]
+
+# Set of font paths we have already warned about during this process.
+# ``select_rendering_font`` pushes into this set after logging so a
+# single batch that calls the renderer many times only produces one
+# warning per overridden font (otherwise the log gets spammed).
+_warned_fallbacks: "set[str]" = set()
 
 
 # -----------------------------------------------------------------------------
@@ -297,6 +340,237 @@ def _fallback_missing_glyphs(
         else:
             new_glyphs.append(g)
     return new_glyphs
+
+
+# -----------------------------------------------------------------------------
+# Font coverage check + safe-font selection
+# -----------------------------------------------------------------------------
+
+
+def check_font_coverage(font_path: str, text: str) -> Tuple[int, int, List[int], str]:
+    """Return the codepoint coverage of ``font_path`` against ``text``.
+
+    Counts every *distinct* Unicode codepoint that appears in ``text``
+    and reports how many of them the font can render (i.e. the font's
+    cmap has a non-zero glyph index for that codepoint).  Ligatures
+    and presentation forms are *not* re-resolved — we only check the
+    literal source codepoints, which is what users expect when they
+    see "the font can't render this character".
+
+    Args:
+        font_path: Absolute path to a TTF/OTF file.
+        text:      The text the user wants to render.
+
+    Returns:
+        A 4-tuple ``(covered, total, missing_codepoints, missing_chars_repr)``:
+
+        * ``covered``  — number of distinct codepoints the font has.
+        * ``total``    — total distinct codepoints in the text.
+        * ``missing_codepoints`` — sorted list of codepoints the font
+          is missing (only those present in the input text).
+        * ``missing_chars_repr`` — a short, human-readable string like
+          ``"U+0671 (ٱ) U+06DD (۝)"`` suitable for log lines.  Empty
+          when coverage is 100%.
+
+    Example::
+
+        >>> check_font_coverage("fonts/Tajawal-Bold.ttf", "ٱلله")
+        (3, 4, [0x0671], 'U+0671 (\u0671)')
+
+    Note: This walks the text character by character and is O(n) in the
+    text length.  The cost is a FreeType ``Face`` open + ``get_char_index``
+    lookup per unique codepoint; for typical Quranic text (a few hundred
+    characters) this completes in well under a millisecond.
+    """
+    if not text:
+        return 0, 0, [], ""
+
+    # Build the set of distinct codepoints the text actually uses.
+    # Skip whitespace and control characters (newlines from word-wrap,
+    # ZWSP, bidi marks, etc.) — these are structural, not renderable,
+    # and no font's cmap contains U+000A.  Including them would make
+    # every word-wrapped line look "incomplete" to the coverage check
+    # and trigger spurious fallbacks.
+    def _is_renderable(cp: int) -> bool:
+        # C0 controls (U+0000..U+001F), space (U+0020), DEL (U+007F),
+        # and the C1 range (U+0080..U+009F) are all non-renderable.
+        if cp < 0x20 or cp == 0x7F or (0x80 <= cp <= 0x9F):
+            return False
+        # BiDi / formatting marks that the renderer ignores anyway.
+        if cp in (0x200B, 0x200C, 0x200D, 0x200E, 0x200F,
+                  0x202A, 0x202B, 0x202C, 0x202D, 0x202E,
+                  0x2066, 0x2067, 0x2068, 0x2069, 0xFEFF):
+            return False
+        return True
+
+    distinct = sorted({ord(c) for c in text if _is_renderable(ord(c))})
+    if not distinct:
+        return 0, 0, [], ""
+
+    # FreeType raises on corrupted fonts.  Treat that as "no coverage
+    # at all" so the caller falls back to a known-good font instead of
+    # crashing the entire render pipeline.
+    try:
+        face = freetype.Face(font_path)
+    except Exception:
+        return 0, len(distinct), distinct, "font_unreadable"
+
+    missing: List[int] = []
+    for cp in distinct:
+        try:
+            if face.get_char_index(cp) == 0:
+                missing.append(cp)
+        except Exception:
+            # Per-codepoint errors are non-fatal; treat as missing.
+            missing.append(cp)
+
+    covered = len(distinct) - len(missing)
+    if missing:
+        repr_parts = []
+        for cp in missing[:8]:  # cap log noise at 8 chars
+            try:
+                ch = chr(cp)
+            except ValueError:
+                ch = "?"
+            repr_parts.append(f"U+{cp:04X} ({ch})")
+        if len(missing) > 8:
+            repr_parts.append(f"...+{len(missing) - 8} more")
+        missing_repr = " ".join(repr_parts)
+    else:
+        missing_repr = ""
+
+    return covered, len(distinct), missing, missing_repr
+
+
+def select_rendering_font(
+    preferred_path: Optional[str],
+    text: str,
+    fallbacks: Optional[List[str]] = None,
+) -> Tuple[str, bool, float, str]:
+    """Pick the best font path to render ``text`` with.
+
+    Strategy:
+
+      1. If ``preferred_path`` is missing or doesn't exist, fall back to
+         the first available full-coverage font on disk.
+      2. Otherwise check the preferred font's coverage against ``text``.
+         If 100%, use it.
+      3. Otherwise try each font in ``fallbacks`` (default: the
+         ``_FULL_COVERAGE_FONTS`` list) and use the first one with 100%
+         coverage.  The warning is logged **once per overridden font**
+         per process (``_warned_fallbacks`` set), so a batch render
+         doesn't spam the log.
+      4. If no font has full coverage, return the preferred font and
+         let the per-cluster fallback catch the missing characters.
+
+    The return value is a 4-tuple ``(chosen_path, was_fallback, coverage_pct, missing_repr)``:
+
+    * ``chosen_path``  — absolute path to the font to use.
+    * ``was_fallback`` — ``True`` if ``chosen_path != preferred_path``.
+    * ``coverage_pct`` — coverage of ``chosen_path`` against ``text``
+      (0.0–1.0).
+    * ``missing_repr`` — human-readable missing-char string for the
+      chosen font (empty when coverage is 100%).
+
+    Note: the caller's preferred font is **never silently dropped**;
+    if no full-coverage replacement can be found, we render with the
+    preferred font and accept any per-cluster fallback artefacts.  This
+    means a niche font with no available backup still works, just not
+    perfectly.
+    """
+    preferred = preferred_path or ""
+    full_cov_list = list(fallbacks) if fallbacks else list(_FULL_COVERAGE_FONTS)
+
+    # Case 1: no preferred font — find any full-coverage font on disk.
+    if not preferred or not os.path.isfile(preferred):
+        for cand in full_cov_list:
+            # If fallbacks were given as basenames, resolve them next
+            # to the preferred font's directory; otherwise treat them
+            # as absolute paths.
+            cand_path = cand
+            if preferred and not os.path.isabs(cand):
+                cand_path = os.path.join(os.path.dirname(preferred), cand)
+            if not os.path.isfile(cand_path) and os.path.isfile(cand):
+                cand_path = cand
+            if os.path.isfile(cand_path):
+                covered, total, missing, missing_repr = check_font_coverage(cand_path, text)
+                if total > 0 and covered == total:
+                    _maybe_warn(preferred, cand_path, covered, total, missing_repr)
+                    return cand_path, True, 1.0, ""
+        # Last-ditch: try the fallback font next to this module even
+        # if the caller didn't pass a preferred path.
+        if os.path.isfile(_FALLBACK_FONT_PATH):
+            covered, total, _, _ = check_font_coverage(_FALLBACK_FONT_PATH, text)
+            if total > 0 and covered == total:
+                return _FALLBACK_FONT_PATH, True, 1.0, ""
+        # Nothing full-coverage available; return preferred as-is.
+        if preferred and os.path.isfile(preferred):
+            covered, total, missing, missing_repr = check_font_coverage(preferred, text)
+            return preferred, False, (covered / total) if total else 1.0, missing_repr
+        return _FALLBACK_FONT_PATH, True, 0.0, ""
+
+    # Case 2: preferred font exists; check its coverage.
+    covered, total, missing, missing_repr = check_font_coverage(preferred, text)
+    if total == 0 or covered == total:
+        return preferred, False, 1.0, ""
+
+    # Case 3: preferred is partial-coverage — try the fallback list.
+    for cand in full_cov_list:
+        cand_path = cand
+        if not os.path.isabs(cand):
+            cand_path = os.path.join(os.path.dirname(preferred), cand)
+        if not os.path.isfile(cand_path) and os.path.isfile(cand):
+            cand_path = cand
+        if not os.path.isfile(cand_path):
+            continue
+        if os.path.abspath(cand_path) == os.path.abspath(preferred):
+            continue  # don't "fall back" to the same font
+        c_covered, c_total, c_missing, c_repr = check_font_coverage(cand_path, text)
+        if c_total > 0 and c_covered == c_total:
+            _maybe_warn(preferred, cand_path, covered, total, missing_repr)
+            return cand_path, True, 1.0, ""
+
+    # Case 4: no replacement found.  Use the preferred font and accept
+    # the partial coverage (per-cluster fallback will patch the holes).
+    return preferred, False, (covered / total) if total else 1.0, missing_repr
+
+
+def _maybe_warn(
+    preferred: str,
+    chosen: str,
+    covered: int,
+    total: int,
+    missing_repr: str,
+) -> None:
+    """Log a single warning when a font override happens.
+
+    Uses the module-level ``_warned_fallbacks`` set to de-duplicate:
+    once we've warned that ``preferred -> chosen`` is happening, we
+    don't warn again for the same pair.  This is what stops a 200-clip
+    batch from filling the log with 200 identical warnings.
+    """
+    key = f"{preferred}->{chosen}"
+    if key in _warned_fallbacks:
+        return
+    _warned_fallbacks.add(key)
+    try:
+        import logging
+        logging.warning(
+            "Font override: %s lacks coverage for %d/%d codepoints "
+            "(missing %s); falling back to %s for consistent Quranic "
+            "ligatures (e.g. \ufdf2).",
+            os.path.basename(preferred) if preferred else "<none>",
+            total - covered, total, missing_repr,
+            os.path.basename(chosen),
+        )
+    except Exception:
+        # Logging shouldn't break rendering.
+        pass
+
+
+def reset_font_warnings() -> None:
+    """Clear the warned-fallbacks set.  Useful in tests."""
+    _warned_fallbacks.clear()
 
 
 def _ft_bitmap_to_pil(ft_bitmap) -> Image.Image:

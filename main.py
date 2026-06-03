@@ -166,6 +166,173 @@ def get_cached_audio_path(reciter_id, surah, ayah):
     return os.path.join(reciter_dir, fn)
 
 
+# =============================================================================
+# STEP 3.5: JOB CONTEXT — PER-VIDEO UNIQUE FILENAMES (BUG FIX)
+# =============================================================================
+# Every video build gets a unique ``job_id`` (8-char hex) so its temp files
+# (audio, text PNG, segment, concat list, chunk) cannot collide with any
+# other build, including:
+#
+#   * a previous build's leftovers in ``TEMP_DIR`` (the temp dir is
+#     auto-cleaned on exit, but two consecutive builds in the same
+#     process were reusing ``audio_001.mp3`` etc. and silently
+#     cross-pollinating),
+#   * a parallel build started in the same process (preview vs. main
+#     generate, or any future concurrent job),
+#   * a build that crashed mid-run and left files behind.
+#
+# The :class:`JobContext` holds the id and provides per-resource
+# path builders.  The active context is stored in ``_current_job``;
+# :func:`start_new_job` is called at the top of every build (and on
+# the API entry points) to refresh it.
+
+import uuid
+
+
+class JobContext:
+    """Holds the unique ``job_id`` for one video build and builds
+    per-resource temp paths.
+
+    All paths are absolute, normalised through :func:`os.path.join`
+    against :data:`TEMP_DIR`, and include the job_id so they can never
+    collide with another build.
+    """
+
+    __slots__ = ("job_id", "created_at")
+
+    def __init__(self, job_id: str | None = None):
+        # 8 hex chars = 32 bits = 4 billion possible ids; more than
+        # enough to make accidental collisions astronomically unlikely
+        # within a single process lifetime.
+        self.job_id = job_id or uuid.uuid4().hex[:8]
+        self.created_at = time.time()
+
+    # ---- per-ayah paths ----
+
+    def audio_path(self, idx: int) -> str:
+        """Per-ayah downloaded/reciter-speed-not-applied audio."""
+        return os.path.join(TEMP_DIR, f"{self.job_id}_audio_{idx:03d}.mp3")
+
+    def sped_path(self, idx: int) -> str:
+        """Per-ayah audio after the reciter_speed atempo pre-pass."""
+        return os.path.join(TEMP_DIR, f"{self.job_id}_audio_{idx:03d}_sped.mp3")
+
+    def text_png_path(self, idx: int) -> str:
+        """Per-ayah rendered Arabic text PNG."""
+        return os.path.join(TEMP_DIR, f"{self.job_id}_text_{idx:03d}.png")
+
+    def segment_path(self, idx: int) -> str:
+        """Per-ayah muxed video segment (bg + text + audio)."""
+        return os.path.join(TEMP_DIR, f"{self.job_id}_segment_{idx:03d}.mp4")
+
+    # ---- Bismillah (single segment, ayah_num=0) ----
+
+    def bismillah_text_png(self) -> str:
+        return os.path.join(TEMP_DIR, f"{self.job_id}_text_000_bismillah.png")
+
+    def bismillah_audio(self) -> str:
+        return os.path.join(TEMP_DIR, f"{self.job_id}_audio_000_bismillah.mp3")
+
+    def bismillah_segment(self) -> str:
+        return os.path.join(TEMP_DIR, f"{self.job_id}_segment_000_bismillah.mp4")
+
+    # ---- concat / chunk / final-output paths ----
+
+    def concat_list_path(self) -> str:
+        """Concat demuxer list for the final crossfade/merge step."""
+        # 8-char job_id + millisecond timestamp = effectively unique.
+        return os.path.join(TEMP_DIR, f"{self.job_id}_concat_{int(time.time() * 1000)}.txt")
+
+    def chunk_list_path(self, ci: int) -> str:
+        return os.path.join(TEMP_DIR, f"{self.job_id}_chunk_{ci:03d}_{int(time.time() * 1000)}.txt")
+
+    def chunk_video_path(self, ci: int) -> str:
+        return os.path.join(TEMP_DIR, f"{self.job_id}_chunk_{ci:03d}_{int(time.time() * 1000)}.mp4")
+
+    def temp_output_path(self, ascii_name: str) -> str:
+        """In-progress final mp4 in TEMP_DIR (gets renamed/moved to
+        ``outputs/video/`` after the crossfade/merge step)."""
+        return os.path.join(TEMP_DIR, f"{self.job_id}_{ascii_name}")
+
+    def final_output_path(self, ascii_name: str) -> str:
+        """Final user-facing mp4 in ``outputs/video/``.  Includes the
+        job_id suffix so two consecutive builds of the exact same
+        surah+ayahs+quality+template+user-name do NOT overwrite each
+        other — see ``bug.md`` Issue 2 P0 #7."""
+        base, ext = os.path.splitext(ascii_name)
+        # Defensive: ensure the output directory exists even if the
+        # caller didn't call ``os.makedirs(VIDEO_DIR)`` explicitly.
+        try:
+            os.makedirs(VIDEO_DIR, exist_ok=True)
+        except Exception:
+            pass
+        return os.path.join(VIDEO_DIR, f"{base}_{self.job_id}{ext}")
+
+
+_current_job: "JobContext | None" = None
+_current_job_lock = threading.Lock()
+
+# Per-thread job context.  ``start_new_job`` is called from the API
+# entry point's worker thread; it sets the value for *that* thread.
+# Any code that runs in a child thread (ThreadPoolExecutor worker,
+# asyncio task) needs its own value — otherwise the workers from two
+# parallel builds would all see whichever job_id was written last
+# and collide on temp filenames (see ``bug.md`` Issue 2 P0 #5
+# "ThreadPool race conditions").
+_job_local = threading.local()
+
+
+def start_new_job() -> JobContext:
+    """Start a fresh job context for one video build.
+
+    Each calling thread gets its own :class:`JobContext` — the context
+    is stored in a :class:`threading.local` so two parallel builds
+    (e.g. a preview while the main build is still running) cannot
+    trample each other's temp filenames.
+
+    Also resets per-build mutable state that must NOT leak across
+    builds (circuit-breaker counters, etc.).  See ``bug.md`` Issue 2
+    P0 #2 ("Global mutable state").  The circuit-breaker reset is
+    guarded by a global lock so two threads can't race to reset it
+    mid-build.
+    """
+    global _circuit_breaker_failures, _circuit_breaker_last_failure
+    ctx = JobContext()
+    _job_local.ctx = ctx
+    with _current_job_lock:
+        # Mirror to module-level so legacy / non-threaded code that
+        # reads ``_current_job`` still works.
+        global _current_job
+        _current_job = ctx
+        # Reset the per-build circuit breaker.  Without this, a long
+        # stretch of download failures on a previous build leaves the
+        # breaker in "open" state and the next build is rejected for
+        # the next 60 s even though it may target a different reciter
+        # / network / etc.
+        _circuit_breaker_failures = 0
+        _circuit_breaker_last_failure = 0
+    logging.info(f"Started new job: job_id={ctx.job_id}")
+    return ctx
+
+
+def current_job() -> JobContext:
+    """Return the active :class:`JobContext` for the current thread,
+    creating a default one if none exists.  Always safe to call.
+
+    Resolution order:
+      1. This thread's ``_job_local.ctx`` (set by ``start_new_job``
+         when the API entry point launched the build), or
+      2. A lazily-created default context (used by tests / smoke
+         scripts / anything that didn't go through the API).
+    """
+    ctx = getattr(_job_local, "ctx", None)
+    if ctx is not None:
+        return ctx
+    # Lazy fallback: create a context in a NEW thread slot so we
+    # don't pollute the parent's thread-local.
+    return start_new_job()
+
+
 def _compute_xfade_pairs(transition_style, n, xfade_d):
     """Return a list of booleans of length ``n-1`` marking which consecutive
     segment pairs get a real xfade (True) vs a hard cut with xfade_d=0 (False).
@@ -229,13 +396,13 @@ def _premerge_chunks(chunk_groups, segment_results, seg_durations):
             chunk_durations.append(chunk_dur)
             continue
         # Multi-segment chunk: pre-merge via concat demuxer
-        list_path = os.path.join(TEMP_DIR, f"chunk_{ci:03d}_{int(time.time()*1000)}.txt")
+        list_path = current_job().chunk_list_path(ci)
         with open(list_path, 'w', encoding='utf-8') as f:
             for idx in chunk:
                 _, seg_path = segment_results[idx]
                 abs_path = os.path.abspath(seg_path).replace(os.sep, '/').replace("'", "'\\''")
                 f.write(f"file '{abs_path}'\n")
-        out_path = os.path.join(TEMP_DIR, f"chunk_{ci:03d}_{int(time.time()*1000)}.mp4")
+        out_path = current_job().chunk_video_path(ci)
         cmd = [
             FFMPEG_EXE, '-y', '-f', 'concat', '-safe', '0', '-i', list_path,
             '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '4',
@@ -386,6 +553,62 @@ FONT_CACHE_DIR = os.path.join(FONT_DIR, "_cache")
 # =============================================================================
 
 WORKING_FONT = None  # Global variable - best Arabic font found
+
+
+# Per-font rendering tuning.  Different fonts ship with different design
+# metrics: Uthman TN1 is laid out for print (~18pt) and looks tiny at
+# 80px; Tajawal Bold has very thick strokes that need a thinner outline
+# to stay legible; Kufi fonts have square corners that look harsh with
+# the default stroke.  Each entry adjusts the rendered fontsize and
+# stroke width relative to the caller's values so the *visual* weight
+# is consistent regardless of which font is active.
+#
+# Keys are font basenames (case-sensitive).  Values are dicts of
+# multipliers applied at render time:
+#   * ``size_mult``   - multiplier on the requested fontsize.
+#   * ``stroke_mult`` - multiplier on the requested stroke_width.
+#   * ``shadow_mult`` - multiplier on the requested shadow_offset.
+#
+# Fonts not in the table are rendered with the requested values
+# unchanged.  This is intentionally a *small* set — the goal is to
+# fix the worst offenders, not to perfectly tune every font.
+_FONT_RENDER_TUNING: dict = {
+    # Uthman TN1 is designed for ~18pt Quran print; bump the size
+    # so it reads well on 1080p video, and reduce stroke so the
+    # delicate hooks don't get muddied.
+    "UthmanTN1-Ver10.otf":          {"size_mult": 1.25, "stroke_mult": 0.85, "shadow_mult": 1.0},
+    # DigitalMadina & DigitalKhatt are Uthmani-madinah; they look
+    # similar to Uthman TN1 but ship at different scales.
+    "DigitalKhatt-OldMadina.otf":   {"size_mult": 1.05, "stroke_mult": 0.95, "shadow_mult": 1.0},
+    "DigitalMadina-NON V1.ttf":     {"size_mult": 1.05, "stroke_mult": 0.95, "shadow_mult": 1.0},
+    "Elgharib-KFGQPCHafs.V10.ttf":  {"size_mult": 1.10, "stroke_mult": 0.90, "shadow_mult": 1.0},
+    "Almadinah1.otf":               {"size_mult": 1.10, "stroke_mult": 0.90, "shadow_mult": 1.0},
+    "Almadinah2.otf":               {"size_mult": 1.10, "stroke_mult": 0.90, "shadow_mult": 1.0},
+    # Tajawal Bold has heavy strokes; thin the outline so the text
+    # doesn't look "doubled".
+    "Tajawal-Bold.ttf":             {"size_mult": 1.00, "stroke_mult": 0.75, "shadow_mult": 1.0},
+    "Tajawal-Medium.ttf":           {"size_mult": 1.00, "stroke_mult": 0.80, "shadow_mult": 1.0},
+    "Tajawal-Regular.ttf":          {"size_mult": 1.00, "stroke_mult": 0.85, "shadow_mult": 1.0},
+    # Kufi / square fonts: their corners look harsh with thick
+    # strokes; thin the outline to keep the geometry crisp.
+    "RanaKufi.otf":                 {"size_mult": 1.05, "stroke_mult": 0.70, "shadow_mult": 1.1},
+    "Letellka-Bold.otf":            {"size_mult": 1.05, "stroke_mult": 0.75, "shadow_mult": 1.0},
+    "Letellka-Light.otf":           {"size_mult": 1.05, "stroke_mult": 0.80, "shadow_mult": 1.0},
+}
+
+
+def _get_font_tuning(font_path: str) -> dict:
+    """Return the tuning dict for ``font_path``, or empty dict if none.
+
+    Looks up by basename so callers can pass any absolute path.
+    Unknown fonts get an empty dict and the caller multiplies by 1.0
+    (i.e. applies the caller's requested values unchanged).
+    """
+    if not font_path:
+        return {}
+    base = os.path.basename(font_path)
+    return _FONT_RENDER_TUNING.get(base, {})
+
 
 def _is_ascii(s):
     try:
@@ -913,20 +1136,60 @@ def render_arabic_to_pil_image(text, fontsize=80, color='#FFFFFF',
         # import fails.
         try:
             from quran_reels.services.shaping import (
-                shape_text, render_shaped_to_canvas,
+                shape_text, render_shaped_to_canvas, select_rendering_font,
             )
+            # Font coverage guard.  The user may have picked a popular
+            # Arabic font (Tajawal, Uthman TN1, Dubai, Zain, Letellka,
+            # RanaKufi, Almadinah) that does NOT contain the full Quranic
+            # Uthmani character set.  Rendering with it produces a
+            # visually broken word — the alef wasla (U+0671) and the ﷲ
+            # ligature come out as disconnected letters or tofu boxes.
+            #
+            # ``select_rendering_font`` checks the actual text against
+            # the chosen font; if anything is missing it transparently
+            # switches to Amiri-Bold (which has 100% Quranic coverage)
+            # and logs a one-time, de-duplicated warning.  This keeps
+            # the entire line in a single font so GSUB ligatures like
+            # ﷲ / ﷽ form correctly.  See BUG 2 / "good appearance".
+            chosen_path, was_fallback, coverage_pct, missing_repr = (
+                select_rendering_font(f_path, processed_text)
+            )
+            if was_fallback:
+                logging.debug(
+                    "Font override: %s -> %s (coverage=%.0f%%, missing %s)",
+                    os.path.basename(f_path), os.path.basename(chosen_path),
+                    coverage_pct * 100, missing_repr,
+                )
+            f_path = chosen_path
+            # Per-font tuning.  Different fonts ship with different
+            # design metrics: Uthman TN1 looks tiny at 80px, Tajawal
+            # has very thick strokes that need thinning, Kufi fonts
+            # have harsh corners.  Apply per-font multipliers so the
+            # visual weight stays consistent across font choices.
+            tuning = _get_font_tuning(f_path)
+            eff_fontsize = max(8, int(round(fontsize * tuning.get("size_mult", 1.0))))
+            eff_stroke = max(0, int(round(stroke_width * tuning.get("stroke_mult", 1.0))))
+            eff_shadow_off = max(0, int(round(shadow_offset * tuning.get("shadow_mult", 1.0))))
+            if eff_fontsize != fontsize or eff_stroke != stroke_width:
+                logging.debug(
+                    "Font tuning applied: %s size %d->%d, stroke %d->%d, shadow %d->%d",
+                    os.path.basename(f_path),
+                    fontsize, eff_fontsize,
+                    stroke_width, eff_stroke,
+                    shadow_offset, eff_shadow_off,
+                )
             return _render_with_shaping(
                 processed_text=processed_text,
                 num_lines=num_lines,
-                fontsize=fontsize,
+                fontsize=eff_fontsize,
                 color=color,
                 stroke_color=stroke_color,
-                stroke_width=stroke_width,
+                stroke_width=eff_stroke,
                 target_width=target_width,
                 font_path=f_path,
                 supersample=supersample,
                 shadow=shadow,
-                shadow_offset=shadow_offset,
+                shadow_offset=eff_shadow_off,
                 shadow_color=shadow_color,
                 glow_color=glow_color,
                 glow_radius=glow_radius,
@@ -1189,8 +1452,8 @@ def download_audio(reciter_id, surah, ayah, idx):
 
     if os.path.exists(cached_path) and os.path.getsize(cached_path) > 1000:
         logging.debug(f"Using cached audio: {fn}")
-        # Copy to temp directory for processing
-        out = os.path.join(TEMP_DIR, f'audio_{idx:03d}.mp3')
+        # Copy to temp directory for processing (job-scoped filename)
+        out = current_job().audio_path(idx)
         shutil.copy2(cached_path, out)
         return out
 
@@ -1202,7 +1465,7 @@ def download_audio(reciter_id, surah, ayah, idx):
         f'https://mp3.quranicaudio.com/quran/{reciter_id}/{fn}'
     ]
 
-    out = os.path.join(TEMP_DIR, f'audio_{idx:03d}.mp3')
+    out = current_job().audio_path(idx)
 
     # Enhanced session with better retry strategy
     session = http_requests.Session()
@@ -1795,10 +2058,24 @@ def process_single_ayah_ffmpeg(args):
     """
     Process one ayah using FFmpeg with animations and dynamic features.
     Uses BackgroundRotator to prevent video repetition.
+
+    The first element of ``args`` is the :class:`JobContext` for the
+    build — passed explicitly so the worker thread (which has its own
+    thread-local storage) uses the *parent* build's job_id, not a
+    racey global.  See ``bug.md`` Issue 2 P0 #5
+    ("ThreadPool race conditions").
     """
-    (reciter_id, surah, ayah, idx, template, bg_style, selected_font,
+    (job, reciter_id, surah, ayah, idx, template, bg_style, selected_font,
      show_text, text_animation, auto_text_color, quality, reciter_speed,
      is_last) = args
+
+    # Bind the parent build's JobContext to this worker thread so any
+    # nested call to ``current_job()`` (e.g. inside ``download_audio``)
+    # returns the same job — otherwise the ThreadPoolExecutor's worker
+    # thread would have its own (empty) thread-local and
+    # ``current_job()`` would lazily start a *third* job mid-build,
+    # splitting the build's files across two job_ids.
+    _job_local.ctx = job
 
     try:
         # Download audio (no trimming, faster)
@@ -1810,7 +2087,7 @@ def process_single_ayah_ffmpeg(args):
         # 2.0] per pass, so values outside that range are clamped.
         if reciter_speed and reciter_speed != 1.0:
             atempo = max(0.5, min(2.0, float(reciter_speed)))
-            sped_path = os.path.join(TEMP_DIR, f'audio_{idx:03d}_sped.mp3')
+            sped_path = current_job().sped_path(idx)
             cmd = [
                 FFMPEG_EXE, '-y', '-hide_banner', '-loglevel', 'error',
                 '-i', audio_path,
@@ -1835,9 +2112,10 @@ def process_single_ayah_ffmpeg(args):
         bg_paths = bg_path if isinstance(bg_path, list) else [bg_path]
         logging.debug(f"Segment {idx}: Using background {os.path.basename(bg_paths[0])}")
 
-        # Render text to PNG
-        text_png = os.path.join(TEMP_DIR, f"text_{idx:03d}.png")
-        segment_out = os.path.join(TEMP_DIR, f"segment_{idx:03d}.mp4")
+        # Render text to PNG (job-scoped filenames so they cannot
+        # collide with another build running in the same process).
+        text_png = current_job().text_png_path(idx)
+        segment_out = current_job().segment_path(idx)
 
         if show_text:
             # Get dynamic text color based on background
@@ -1919,9 +2197,10 @@ def _build_bismillah_segment(template, selected_font, quality, bg_paths):
     Returns ``(ayah_num, segment_path)`` with ``ayah_num=0`` so the existing
     sort-by-ayah-number logic places it before ayah 1.
     """
-    bismillah_png = os.path.join(TEMP_DIR, 'text_000_bismillah.png')
-    bismillah_audio = os.path.join(TEMP_DIR, 'audio_000_bismillah.mp3')
-    bismillah_segment = os.path.join(TEMP_DIR, 'segment_000_bismillah.mp4')
+    job = current_job()
+    bismillah_png = job.bismillah_text_png()
+    bismillah_audio = job.bismillah_audio()
+    bismillah_segment = job.bismillah_segment()
 
     # 1) Render the Bismillah text using the same template-driven renderer
     #    the regular ayahs use, so font / glow / color stay consistent.
@@ -1987,6 +2266,13 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
         callers in the API routes continue to work unchanged.
     """
     try:
+        # Start a fresh job context: gives every temp file a unique
+        # ``job_id`` so this build cannot collide with any previous
+        # build's leftovers or a parallel build's running files (see
+        # ``bug.md`` Issue 2 P0 #1 and #2).  Also resets the
+        # per-build circuit-breaker counters that may have tripped on
+        # a previous run.
+        start_new_job()
         current_progress.set(is_running=True, is_complete=False, error=None)
 
         # Get config
@@ -2019,7 +2305,7 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
              last_ayah = start_ayah + 49
              total = 50
 
-        add_log(f'Building {total} ayat from {start_ayah} to {last_ayah}')
+        add_log(f'Building {total} ayat from {start_ayah} to {last_ayah} (job_id={current_job().job_id})')
         update_progress(10, f'جاري تحضير {total} آيات...')
 
         # Initialize background rotator to prevent repetition
@@ -2067,9 +2353,14 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
 
         # Prepare args - now includes rotation index for variety + quality preset
         # + is_last flag (Phase 2 T2.5) so the last segment skips the outro fade.
+        # The leading ``job`` element is the per-build :class:`JobContext`
+        # captured at the top of ``build_video`` — passed explicitly so
+        # the worker threads (which have their own thread-local storage)
+        # cannot race on a global job_id.  See ``bug.md`` Issue 2 P0 #5.
         total_ayahs = last_ayah - start_ayah + 1
+        job = current_job()
         ayah_args = [
-            (reciter_id, surah, ayah, idx, template, bg_style, selected_font, show_text,
+            (job, reciter_id, surah, ayah, idx, template, bg_style, selected_font, show_text,
              text_animation, auto_text_color, quality, reciter_speed, idx == total_ayahs)
             for idx, ayah in enumerate(range(start_ayah, last_ayah + 1), start=1)
         ]
@@ -2080,10 +2371,16 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
         # Remove Arabic characters for temp filename
         ascii_name = f"{clean_name}_Surah{surah}_Ayah{start_ayah}-{last_ayah}_{quality}_{template}"
         temp_filename = f"{ascii_name}.mp4"
-        temp_output_path = os.path.join(TEMP_DIR, temp_filename)
+        # In-progress final mp4 lives in TEMP_DIR under a job-scoped
+        # name so two concurrent/sequential builds cannot trample each
+        # other.
+        temp_output_path = current_job().temp_output_path(temp_filename)
 
         # Final output with user-friendly filename
-        # Format: "Quran_Surah[Number]_[Name]_Ayah[Start-End]_[Name]_[Quality].mp4"
+        # Format: "Quran_Surah[Number]_[Name]_Ayah[Start-End]_[Name]_[Quality]_<job_id>.mp4"
+        # The ``<job_id>`` suffix prevents silent overwrites when the
+        # user re-runs the exact same surah+ayahs+quality back-to-back
+        # — see ``bug.md`` Issue 2 P0 #7.
         surah_number = f"{surah:03d}"  # 3-digit format (001, 002, etc.)
         ayah_range = f"{start_ayah}-{last_ayah}"
         user_part = f"_{clean_name}" if clean_name else ""
@@ -2093,7 +2390,7 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
         surah_name_clean = surah_name_ar.replace(" ", "_").replace("/", "_").replace("\\", "_")
 
         filename = f"Quran_Surah{surah_number}_{surah_name_clean}_Ayah{ayah_range}{user_part}_{quality}.mp4"
-        output_path = os.path.join(VIDEO_DIR, filename)
+        output_path = current_job().final_output_path(filename)
 
         os.makedirs(VIDEO_DIR, exist_ok=True)
 
@@ -2138,8 +2435,10 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
 
         # Always build the concat list file up-front so any fallback can reuse it.
         # This avoids UnboundLocalError on 'list_path' if the crossfade path fails
-        # before the list is created.
-        list_path = os.path.join(TEMP_DIR, f"concat_{int(time.time() * 1000)}.txt")
+        # before the list is created.  Job-scoped so a previous build's
+        # leftover list cannot be picked up by mistake — see ``bug.md``
+        # Issue 2 P0 #4.
+        list_path = current_job().concat_list_path()
         with open(list_path, "w", encoding="utf-8") as f:
             for _, seg_path in segment_results:
                 abs_path = os.path.abspath(seg_path).replace(os.sep, '/').replace("'", "'\\''")
