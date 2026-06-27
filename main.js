@@ -42,7 +42,6 @@ const qualitySelect = document.getElementById('qualitySelect');
 const templateSelect = document.getElementById('templateSelect');
 const formatSelect = document.getElementById('formatSelect');
 const personNameInput = document.getElementById('personName');
-const fontSelect = document.getElementById('fontSelect');
 
 
 
@@ -194,25 +193,12 @@ function initParticles() {
     }
 }
 
-const refreshFontsBtn = document.getElementById('refreshFontsBtn');
-
 async function loadConfig() {
     try {
         const response = await fetch(`${API_BASE}/api/config`);
         const data = await response.json();
 
-        // 1. Load Fonts
-        if (data.availableFonts && data.availableFonts.length > 0) {
-            fontSelect.innerHTML = '<option value="random">عشوائي (تلقائي)</option>';
-            data.availableFonts.forEach(font => {
-                const option = document.createElement('option');
-                option.value = font;
-                option.textContent = font.replace(/\.(ttf|otf)$/i, '');
-                fontSelect.appendChild(option);
-            });
-        }
-
-        // 2. Load Reciters (Synchronize with RECITERS_MAP from backend)
+        // Load Reciters (Synchronize with RECITERS_MAP from backend)
         if (data.reciters) {
             reciterSelect.innerHTML = '';
             Object.entries(data.reciters).forEach(([displayName, internalValue]) => {
@@ -229,14 +215,6 @@ async function loadConfig() {
 
 // Global alias for compatibility
 const loadAvailableFonts = loadConfig;
-
-if (refreshFontsBtn) {
-    refreshFontsBtn.addEventListener('click', () => {
-        refreshFontsBtn.classList.add('spinning');
-        loadConfig();
-        setTimeout(() => refreshFontsBtn.classList.remove('spinning'), 1000);
-    });
-}
 
 
 // --- Logic Functions ---
@@ -306,8 +284,6 @@ generateBtn.addEventListener('click', async (e) => {
         template: templateSelect.value,
         personName: personNameInput.value,
         format: formatSelect.value,
-        selectedFont: document.getElementById('fontSelect').value,
-        showText: document.getElementById('showTextSelect').value === 'yes',
         includeBismillah: document.getElementById('bismillahCheckbox').checked,
         targetDurationSeconds: (() => {
             const v = document.getElementById('targetDurationInput').value;
@@ -350,8 +326,7 @@ previewBtn.addEventListener('click', async () => {
         reciter: reciterSelect.value,
         surah: parseInt(surahSelect.value),
         ayah: parseInt(startAyahInput.value),
-        template: templateSelect.value,
-        showText: document.getElementById('showTextSelect').value === 'yes'
+        template: templateSelect.value
     };
 
     try {

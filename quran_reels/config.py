@@ -12,20 +12,15 @@ order in which it is loaded does not matter.
 """
 
 # =============================================================================
-# Feature flags  (animations.md §12)
+# Feature flags
 # =============================================================================
-# Gates each phase of the animations plan so behavior changes are opt-in.
-#   - font_polish:     Phase 1 (always on, already shipped)
-#   - text_animations: Phase 2 (intro/outro fades, slide/zoom on text)
-#   - kinetic_text:    Phase 3 (per-word reveal — opt-in, not yet implemented)
-#   - forced_alignment: Phase 3 v3 (per-word word-by-word forced alignment)
+# The text-on-video overlay feature (Arabic text rendering, animations,
+# font selection) has been removed.  The app now produces audio + background
+# video only.  ``FEATURE_FLAGS`` is kept as an empty dict so any legacy
+# ``FEATURE_FLAGS.get(...)`` lookups in callers continue to work without a
+# ``NameError``.
 
-FEATURE_FLAGS = {
-    'font_polish':        True,
-    'text_animations':    True,
-    'kinetic_text':       False,
-    'forced_alignment':   False,
-}
+FEATURE_FLAGS = {}
 
 # =============================================================================
 # Output dimensions / format
@@ -49,35 +44,31 @@ OUTPUT_FORMATS = {
 # =============================================================================
 # Visual templates
 # =============================================================================
+# Each template now drives only the background style and the crossfade
+# transition between ayahs.  Text-rendering fields (text_color, font,
+# font_size_mult, glow_color, glow_radius, text_animation) have been
+# removed along with the rest of the text-on-video feature.
 
 TEMPLATES = {
     'ramadan': {
-        'bg_style': 'night', 'text_color': '#FFD700', 'font_size_mult': 1.20,
-        'text_animation': 'fade_in', 'transition': 'fade',
+        'bg_style': 'night',
+        'transition': 'fade',
         'transition_style': 'cinematic',
-        'font': 'Amiri-Bold.ttf', 'glow_color': '#FFD700', 'glow_radius': 8,
     },
     'normal':  {
-        'bg_style': 'nature', 'text_color': '#FFFFFF', 'font_size_mult': 1.00,
-        'text_animation': 'slide_up', 'transition': 'fade',
+        'bg_style': 'nature',
+        'transition': 'fade',
         'transition_style': 'cinematic',
-        'font': 'Amiri-Regular.ttf',
     },
     'masjid':  {
-        # Soft white halo evokes moonlit calligraphy on the mosque wall.
-        # Note: must use Amiri — Lateef/ElMessiri lack presentation forms and
-        # PIL does not apply OpenType GSUB contextual substitution.
-        'bg_style': 'masjid', 'text_color': '#FFFFFF', 'font_size_mult': 1.10,
-        'text_animation': 'fade_in', 'transition': 'fade',
+        'bg_style': 'masjid',
+        'transition': 'fade',
         'transition_style': 'cinematic',
-        'font': 'Amiri-Bold.ttf', 'glow_color': '#FFFFFF80', 'glow_radius': 4,
     },
     'islamic': {
-        # Heavier drop shadow gives the calligraphic depth of manuscript art.
-        'bg_style': 'islamic', 'text_color': '#FFFFFF', 'font_size_mult': 1.10,
-        'text_animation': 'zoom_in', 'transition': 'wipe',
+        'bg_style': 'islamic',
+        'transition': 'wipe',
         'transition_style': 'cinematic',
-        'font': 'Amiri-Bold.ttf',
     },
 }
 
@@ -151,6 +142,5 @@ RECITERS_MAP = {
 # considered the first ayah of Al-Fatihah by most schools — prepending it
 # would duplicate.
 
-BISMILLAH_TEXT = "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ"
 BISMILLAH_DURATION_SEC = 1.8  # self-contained title card length
 BISMILLAH_SKIP_SURAHS = {1, 9}  # Al-Fatihah (Bismillah IS ayah 1) and At-Tawbah

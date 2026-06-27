@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.11+-blue.svg" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/FFmpeg-6.0+-green.svg" alt="FFmpeg 6.0+">
-  <img src="https://img.shields.io/badge/Flask-2.3+-orange.svg" alt="Flask 2.3+">
+  <img src="https://img.shields.io/badge/Flask-3.0+-orange.svg" alt="Flask 3.0+">
   <img src="https://img.shields.io/badge/License-Apache%202.0-yellow.svg" alt="License">
 </p>
 
@@ -15,17 +15,22 @@
 
 ## 🌍 English
 
-An automated AI-powered tool to create professional Quranic Reels/Shorts video content. It synchronizes Quranic text (Uthmani script) with high-quality recitations over beautiful animated backgrounds—perfect for Instagram Reels, TikTok, and YouTube Shorts.
+An automated AI-powered tool to create professional Quranic Reels/Shorts video content. It synchronizes Quranic recitation audio with beautiful animated background videos—perfect for Instagram Reels, TikTok, and YouTube Shorts. The app now focuses purely on producing high-quality audio + background video without Arabic text overlays.
+
+**Key change**: The text-on-video rendering feature (Arabic text overlay, fonts, text animations) has been **removed**. The app now produces audio + background video only. Future enhancements include adding ayah number watermarks, text overlays, and improved audio transitions.
+
+For the latest feature roadmap, see [`future-steps.md`](future-steps.md).
 
 ### ✨ Key Features
 
 #### 🎥 Video Production
-- **Full Automation**: Automatically fetches Quranic text and audio recitations from online sources
+- **Full Automation**: Automatically fetches Quranic recitation audio from online sources
 - **High Quality**: 1080×1920 (9:16) vertical format optimized for social media platforms
 - **Multiple Formats**: Reels, Story, and Post formats supported
 - **Smart Audio**: Automatic silence trimming for perfect synchronization between ayahs
 - **Fast Processing**: FFmpeg stream copy for instant segment merging without quality loss
 - **Background Variety**: Smart rotation system prevents repeating the same video per ayah
+- **Progressive Crossfades**: Smooth transitions between ayah segments
 
 #### 🎙️ Supported Reciters
 12+ famous reciters including multiple quality options:
@@ -41,19 +46,17 @@ An automated AI-powered tool to create professional Quranic Reels/Shorts video c
 - Sheikh Mustafa Ismail
 
 #### 🎨 Design & Customization
-- **Dynamic Fonts**: Auto-detection of all .ttf/.otf fonts in `fonts/` folder with caching. **All Arabic fonts render correctly** via the HarfBuzz + FreeType shaping pipeline (ligatures, tashkeel, kashida, GPOS positioning). 20 fonts ship in the box: Almadinah, Amiri, DigitalKhatt, DigitalMadina, Dubai, Elgharib, Lateef, Letellka, RanaKufi, Tajawal, Uthman, Zain.
-- **Smart Backgrounds**: Organized by style (Nature, Islamic, Masjid, Night)
-- **Visual Templates**: 4 professional themes (Ramadan, Normal, Masjid, Islamic)
-- **Arabic Text Rendering**: Proper tashkeel and RTL support using arabic-reshaper
-- **Text Search**: Quick surah finder with real-time filtering
-- **Dynamic Text Color**: Auto-adjusts based on background brightness for readability
+- **Smart Backgrounds**: Organized by style (Nature, Islamic, Masjid, Night) with progressive crossfade transitions
+- **Visual Templates**: 4 professional themes (Ramadan, Normal, Masjid, Islamic) driving background style and video transitions
+- **Automatic Brightness Detection**: Backgrounds intelligently selected to match audio dynamics
 
 #### ⚙️ Advanced Settings
 - **Ayah Selection**: Smart validation prevents invalid selections
 - **Quality Levels**: Low (fast), Medium, High (slow/best quality)
 - **Progress Tracking**: Real-time logs and percentage completion
 - **Modern UI**: Glassmorphism design with premium aesthetics and dark theme
-- **Animations**: Smooth text animations and video transitions
+- **Background Selection**: Intelligently adapted to audio dynamics
+- **Crossfade Transitions**: Smooth segment-to-segment transitions
 
 ### 🚀 Quick Start
 
@@ -62,6 +65,7 @@ An automated AI-powered tool to create professional Quranic Reels/Shorts video c
 - Windows 10/11 or Linux/macOS
 - 4GB+ RAM (8GB recommended for 1080p)
 - 2GB free disk space
+- FFmpeg 6.0+ (download from ffmpeg.io or package manager)
 
 #### Installation
 
@@ -74,7 +78,7 @@ cd Quran-Reels-Generator
 python -m venv .venv
 
 # Activate (Windows)
-.venv\Scripts\activate
+.venv\\Scripts\\activate
 
 # Activate (Linux/macOS)
 source .venv/bin/activate
@@ -83,7 +87,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 # Add your backgrounds (optional but recommended)
-copy *.mp4 vision/nature/
+# Place .mp4 videos in: vision/nature/, vision/islamic/, vision/masjid/, vision/night/
 
 # Run the server
 python main.py
@@ -94,15 +98,18 @@ python main.py
 #### Usage
 
 1. **Add Backgrounds**: Place .mp4 files in `vision/` subdirectories (nature, islamic, masjid, night)
-2. **Add Fonts** (Optional): Place .ttf/.otf Arabic fonts in `fonts/` folder
-3. **Run Server**: Execute `python main.py` and wait for initialization
-4. **Open UI**: Visit `http://localhost:5000` in your browser
-5. **Create Video**:
+2. **Run Server**: Execute `python main.py` and wait for initialization
+3. **Open UI**: Visit `http://localhost:5000` in your browser
+4. **Create Video**:
    - Select reciter from dropdown
    - Search and select Surah (use the search box)
-   - Set start and end ayah numbers
+   - Set start and end ayah numbers (default: 1-7)
    - Choose quality and template
    - Optionally add your name
+   - Use the Bismillah checkbox to start with a title card (silent)
+   - Set maximum duration (optional)
+   - Set recitation speed (0.5× slower to 2.0× faster)
+   - Choose transition style between ayahs
    - Click "Generate Video"
 
 ### 📁 Project Structure
