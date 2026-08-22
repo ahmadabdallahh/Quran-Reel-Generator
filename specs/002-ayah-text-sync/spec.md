@@ -8,6 +8,12 @@
 
 **Input**: User description: "Render the text of the ayah currently being recited, synchronized with the recitation audio over the background video (read-along display)."
 
+## Clarifications
+
+### Session 2026-08-22
+
+- Q: Should segments display an ayah reference label (e.g., "Surah Name S:A") alongside the verse text? → A: No — v1 renders verse text only; a reference sticker remains a separate future increment.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Read along with the recitation (Priority: P1)
@@ -124,7 +130,8 @@ rough correspondence with the audio.
 
 - **FR-001**: System MUST display the complete Arabic text of the ayah
   currently being recited, for the full duration of that ayah's audio
-  segment, when text display is enabled.
+  segment, when text display is enabled. Display is limited to the verse
+  text itself — no reference label or sticker in v1 (see Clarifications).
 - **FR-002**: Displayed text MUST exactly match authoritative Quranic text
   obtained from the project's vetted text source — no paraphrasing,
   abbreviation, or reordering of words.
