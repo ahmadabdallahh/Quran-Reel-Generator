@@ -265,8 +265,28 @@ function updateUI(data) {
     if (data.is_complete && data.output_path) {
         // Video filename is the last part of path
         const filename = data.output_path.split(/[\\\/]/).pop();
-        previewVideo.src = `${API_BASE}/outputs/video/${filename}`;
-        videoPreviewWrapper.classList.add('active');
+        const videoUrl = `${API_BASE}/outputs/video/${filename}`;
+        
+        // Set video source and show preview/download immediately
+        if (previewVideo.src !== videoUrl) {
+            previewVideo.src = videoUrl;
+            previewVideo.load();
+        }
+        
+        // Always show video preview and download link when video is generated
+        if (!videoPreviewWrapper.classList.contains('active')) {
+            videoPreviewWrapper.classList.add('active');
+        }
+        
+        // Update download link - ensure it's always visible
+        const downloadLink = document.getElementById('downloadLink');
+        if (downloadLink) {
+            downloadLink.href = videoUrl;
+            downloadLink.textContent = 'تحميل الفيديو';
+            downloadLink.style.display = 'inline-block';
+        }
+        
+        addLog(`\u2705 الفيديو جاهز! فيديو URL: ${videoUrl}`);
     }
 }
 
@@ -312,6 +332,11 @@ generateBtn.addEventListener('click', async (e) => {
 
         const data = await res.json();
         if (data.success) {
+            generateBtn.disabled = true;
+            generateBtn.innerHTML = '<span>جاري العمل...</span> <div class="loading-dots"><span>.</span><span>.</span><span>.</span></div>';
+            if (!progressInterval) {
+                progressInterval = setInterval(pollProgress, 1000);
+            }
             pollProgress();
         } else {
             alert(data.error || 'حدث خطأ في بدء العملية');

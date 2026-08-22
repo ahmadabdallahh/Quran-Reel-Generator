@@ -73,7 +73,7 @@ TEMPLATES = {
 }
 
 # =============================================================================
-# Animation & transitions
+# Video transitions (legacy from text-on-video era)
 # =============================================================================
 
 VIDEO_TRANSITIONS = {

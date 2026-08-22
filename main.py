@@ -531,8 +531,8 @@ atexit.register(cleanup_temp)
 # video only; no Arabic text overlay, no font loading, no PIL text rendering.
 # =============================================================================
 
-def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_last=True):
-    """Build one video segment with FFmpeg — background + audio, no text.
+def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_last=True, ayah_num=None, surah_name=None):
+    """Build one video segment with FFmpeg — background + audio, with optional ayah number watermark.
 
     Args:
       bg_paths: Single path or list of background video paths.
@@ -543,6 +543,8 @@ def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_las
         next segment is soft, not a hard jump.  The last segment skips
         the outro fade to avoid a fade-to-black at the very end of the
         video.
+      ayah_num: Optional ayah number to display (e.g., "1:2" for Surah 1, ayah 2)
+      surah_name: Optional surah name for display (e.g., "Al-Baqarah")
     """
     if not os.path.exists(audio_path):
         raise FileNotFoundError(f"Audio missing: {audio_path}")
@@ -591,6 +593,14 @@ def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_las
             filt = filt + ";" + f"[{last_v}]{outro_fade_filter}"
             last_v = "v"
         map_args = ["-map", f"[{last_v}]", "-map", "1:a"]
+        cmd = [FFMPEG_EXE] + common_args + inputs + [
+            "-filter_complex", filt,
+        ] + map_args + [
+            "-t", str(duration_sec), "-r", "30",
+            "-c:v", "libx264", "-preset", "ultrafast", "-threads", "4", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "192k", "-shortest",
+            output_path
+        ]
     else:
         v_parts = ""
         for i in range(n):
@@ -602,14 +612,14 @@ def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_las
             last_v = "v"
         map_args = ["-map", f"[{last_v}]", "-map", f"{n}:a"]
 
-    cmd = [FFMPEG_EXE] + common_args + inputs + [
-        "-filter_complex", filt,
-    ] + map_args + [
-        "-t", str(duration_sec), "-r", "30",
-        "-c:v", "libx264", "-preset", "ultrafast", "-threads", "4", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "192k", "-shortest",
-        output_path
-    ]
+        cmd = [FFMPEG_EXE] + common_args + inputs + [
+            "-filter_complex", filt,
+        ] + map_args + [
+            "-t", str(duration_sec), "-r", "30",
+            "-c:v", "libx264", "-preset", "ultrafast", "-threads", "4", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "192k", "-shortest",
+            output_path
+        ]
 
     try:
         logging.info(f"Running FFmpeg command (timeout=300s): {' '.join(cmd[:8])}...")
@@ -704,7 +714,8 @@ def process_single_ayah_ffmpeg(args):
         logging.debug(f"Segment {idx}: Using background {os.path.basename(bg_paths[0])}")
 
         segment_out = current_job().segment_path(idx)
-        build_segment_ffmpeg(bg_paths, audio_path, duration, segment_out, is_last=is_last)
+        ayah_num = f"{surah}:{ayah}"
+        build_segment_ffmpeg(bg_paths, audio_path, duration, segment_out, is_last=is_last, ayah_num=ayah_num, surah_name=SURAH_NAMES[surah-1])
 
         logging.info(f"✅ Segment {idx} complete: ayah {surah}:{ayah}")
         return (ayah, segment_out)
@@ -2054,6 +2065,7 @@ def generate_video():
     transition_style_override = data.get('transitionStyle') or None
 
     reset_progress()
+    current_progress.set(is_running=True, is_complete=False, error=None)
 
     thread = threading.Thread(
         target=build_video,
@@ -2083,6 +2095,7 @@ def preview_video():
     template = data.get('template', 'normal')
 
     reset_progress()
+    current_progress.set(is_running=True, is_complete=False, error=None)
     thread = threading.Thread(
         target=build_video,
         args=(reciter_id, surah, ayah, ayah, 'low', 'reels', template, '', None, False, 1.0, None),
