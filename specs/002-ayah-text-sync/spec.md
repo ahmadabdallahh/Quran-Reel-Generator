@@ -13,6 +13,7 @@
 ### Session 2026-08-22
 
 - Q: Should segments display an ayah reference label (e.g., "Surah Name S:A") alongside the verse text? → A: No — v1 renders verse text only; a reference sticker remains a separate future increment.
+- Q: How is Bismillah-as-ayah-1 handled when generating Al-Fatihah from ayah 1? → A: Rendered like any other ayah (full segment text); the intro card stays suppressed via the existing skip list for such surahs.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -111,9 +112,11 @@ rough correspondence with the audio.
 - How are very long ayahs handled (e.g., the longest verses)? The complete
   text wraps across multiple lines within the frame; nothing is truncated,
   shrunk into illegibility, or pushed off-screen.
-- What is displayed during the Bismillah intro card? Defined per template:
-  either no body text or the Bismillah phrase itself; first ayah's text must
-  not appear before its audio starts.
+- What is displayed during the Bismillah intro card? No rendered verse text
+  — existing intro visuals only; the first ayah's text must not appear
+  before its audio starts. Where the recited ayah IS the Bismillah
+  (Al-Fatihah ayah 1, with the intro already suppressed for such surahs),
+  it renders as normal segment text (see Clarifications).
 - What about diacritics and letter shaping across unusual verses? All 114
   surahs' orthography renders correctly (connected script, marks positioned)
   — sampled verification across surah variety is part of validation.
@@ -147,9 +150,12 @@ rough correspondence with the audio.
   every ayah.
 - **FR-006**: Long ayahs MUST wrap across multiple lines inside the frame;
   no truncation, clipping, or shrinking below the legibility minimum.
-- **FR-007**: Bismillah/intro segment behavior MUST be defined per template:
-  show no body text or show the Bismillah phrase; first ayah text MUST NOT
-  appear during the intro.
+- **FR-007**: The Bismillah/intro segment MUST carry no rendered verse text
+  (existing intro visuals unchanged); the first ayah's text MUST NOT appear
+  before its audio starts. Where the recited ayah IS the Bismillah
+  (Al-Fatihah ayah 1), it is treated like any other ayah — full segment
+  text — while the intro card remains suppressed by the existing skip list
+  for such surahs.
 - **FR-008**: Users MUST be able to disable text display via configuration;
   disabled mode MUST reproduce the existing audio + background-only output.
 - **FR-009**: Text appearance (position, colors, treatment) MUST follow the
