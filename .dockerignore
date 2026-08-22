@@ -1,0 +1,44 @@
+# Keep HF Docker build context small — Space has 50 GB but upload should be lean
+.git
+.gitignore
+.github
+.opencode
+.specify
+specs
+docs
+
+# Python / OS cruft
+__pycache__
+*.py[cod]
+*.pyc
+.pytest_cache
+.mypy_cache
+.hypothesis
+.venv
+venv
+.env
+.env.local
+.venv
+*.log
+runlog.txt
+*.tmp
+
+# Runtime artefacts (re-created in container)
+cache/
+outputs/
+temp/
+tmp/
+bin/ffmpeg
+bin/imagemagick
+
+# Large reference file not needed at runtime
+old_main.py
+temp_diff.txt
+extract.py
+patch.py
+
+# Editor
+.vscode
+.idea
+.DS_Store
+Thumbs.db

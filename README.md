@@ -1,3 +1,13 @@
+---
+title: Quran Reels Generator
+emoji: 📖
+colorFrom: green
+colorTo: blue
+sdk: docker
+pinned: false
+app_port: 7860
+---
+
 # 📖 Quran Reels Generator | أداة عمل ريلز القرآن الكريم
 
 <p align="center">
