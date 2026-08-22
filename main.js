@@ -305,6 +305,7 @@ generateBtn.addEventListener('click', async (e) => {
         personName: personNameInput.value,
         format: formatSelect.value,
         includeBismillah: document.getElementById('bismillahCheckbox').checked,
+        showText: document.getElementById('showTextCheckbox').checked,
         targetDurationSeconds: (() => {
             const v = document.getElementById('targetDurationInput').value;
             const n = parseInt(v, 10);
@@ -351,7 +352,8 @@ previewBtn.addEventListener('click', async () => {
         reciter: reciterSelect.value,
         surah: parseInt(surahSelect.value),
         ayah: parseInt(startAyahInput.value),
-        template: templateSelect.value
+        template: templateSelect.value,
+        showText: document.getElementById('showTextCheckbox').checked
     };
 
     try {

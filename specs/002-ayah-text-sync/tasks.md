@@ -38,10 +38,10 @@ ONLY the surviving (last) definition.
 
 **Purpose**: Font asset + environment confirmation needed by every story.
 
-- [ ] T001 [P] Create `assets/fonts/`, bundle one Quranic-grade OFL font
+- [x] T001 [P] Create `assets/fonts/`, bundle one Quranic-grade OFL font
       (Amiri or Scheherazade New regular, <1 MB) plus its `LICENSE-OFL.txt`;
       record chosen filename for config constants
-- [ ] T002 [P] Confirm runtime text-shaping capability on the dev machine:
+- [x] T002 [P] Confirm runtime text-shaping capability on the dev machine:
       run `python3 -c "from PIL import features; print(features.check('raqm'))"`
       and verify it prints `True`; if False, stop and record blocker in
       `specs/002-ayah-text-sync/research.md` D1 before any further work
@@ -56,18 +56,18 @@ ONLY the surviving (last) definition.
 
 **⚠️ CRITICAL**: No user story work begins until this phase is complete.
 
-- [ ] T003 Add text-rendering constants to `quran_reels/config.py`:
+- [x] T003 Add text-rendering constants to `quran_reels/config.py`:
       `TEXT_FONT_CANDIDATES` (bundled font first, system Noto Kufi Arabic
       fallback), `TEXT_ZONE` geometry (max_width_frac=0.86, lower-center
       anchor), `TEXT_SIZE_MIN_PX`/`TEXT_SIZE_MAX_PX` clamps,
       `BACKING_COLOR`/`BACKING_OPACITY` (dark, ~0.6),
       `SHOW_TEXT_DEFAULT=True`, `HIGHLIGHT_WORDS_DEFAULT=False`
-- [ ] T004 Create leaf renderer module `quran_reels/services/text_overlay.py`
+- [x] T004 Create leaf renderer module `quran_reels/services/text_overlay.py`
       (zero imports of `main`): `load_font()` walking the candidate chain;
       `render_ayah_text_png(text, profile, frame_w, frame_h)` returning the
       written PNG path — RAQM text layout, greedy line wrap, rounded
       semi-transparent backing box, transparent RGBA output sized ≤ frame
-- [ ] T005 Sanity-render Al-Ikhlas 1:1 standalone with a one-off
+- [x] T005 Sanity-render Al-Ikhlas 1:1 standalone with a one-off
       `python -c` invocation of `render_ayah_text_png()` from
       `quran_reels/services/text_overlay.py`; open the PNG and visually
       verify right-to-left connected letterforms and correctly positioned
@@ -89,33 +89,33 @@ correct synced text; multi-ayah reel has clean boundary transitions;
 
 ### Implementation for User Story 1
 
-- [ ] T006 [US1] In `main.py`: FIRST grep for duplicate
+- [x] T006 [US1] In `main.py`: FIRST grep for duplicate
       `def build_segment_ffmpeg` and edit ONLY the surviving definition —
       add optional `text_png_path=None` parameter; when set, append the PNG
       as an extra `-i` input and insert an `overlay` filter node after the
       background chain (both `n==1` and `n>1` filter branches) before the
       outro fade mapping
-- [ ] T007 [US1] In `main.py` `process_single_ayah_ffmpeg()`: accept
+- [x] T007 [US1] In `main.py` `process_single_ayah_ffmpeg()`: accept
       `show_text` flag; when enabled call `get_ayah_text(surah, ayah)` and
       `render_ayah_text_png(...)` to `temp/{job}_text_{surah}_{ayah}.png`,
       passing the path into `build_segment_ffmpeg()`; when disabled pass
       nothing (exact current behavior)
-- [ ] T008 [US1] In `main.py`: wrap the T007 fetch/render calls so a text
+- [x] T008 [US1] In `main.py`: wrap the T007 fetch/render calls so a text
       failure raises a contextual error (`تعذر جلب نص الآية {surah}:{ayah}`)
       that reaches `current_progress.error` and `runlog.txt` and aborts the
       job — never a silent textless "success" (FR-010/SC-007)
-- [ ] T009 [US1] In `main.py` route handlers `generate_video()` and
+- [x] T009 [US1] In `main.py` route handlers `generate_video()` and
       `preview_video()`: parse `show_text` from request JSON (default
       `SHOW_TEXT_DEFAULT`) and thread it through the `build_video(...)`
       worker arguments and preview flow per
       `specs/002-ayah-text-sync/contracts/generate-api.md`
-- [ ] T010 [US1] In `main.py` Bismillah title-card builder: force NO body
+- [x] T010 [US1] In `main.py` Bismillah title-card builder: force NO body
       text overlay on the intro segment regardless of `show_text`; first
       ayah text appears only with its own audio (FR-007)
-- [ ] T011 [US1] In `main.py`: emit one progress/log line per segment via the
+- [x] T011 [US1] In `main.py`: emit one progress/log line per segment via the
       surviving `update_progress()`/`add_log()` —
       `text: fetched|rendered|skipped ({surah}:{ayah})` (SC-006 log visibility)
-- [ ] T012 [US1] Frontend: add a default-checked "Show ayah text /
+- [x] T012 [US1] Frontend: add a default-checked "Show ayah text /
       إظهار نص الآية" checkbox to `UI.html`; send `show_text` in both the
       generate and preview request payloads in `main.js`
 

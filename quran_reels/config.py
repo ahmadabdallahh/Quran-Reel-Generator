@@ -11,6 +11,56 @@ Nothing in this module imports from ``main`` — it's a leaf — so the
 order in which it is loaded does not matter.
 """
 
+import os
+
+# =============================================================================
+# Ayah text rendering (feature 002-ayah-text-sync, Constitution v2.0.0
+# Principle I).  Consumed by quran_reels/services/text_overlay.py.
+# =============================================================================
+
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_ASSETS_DIR = os.path.join(_REPO_ROOT, "assets")
+
+# Font fallback chain: bundled Quranic-grade font first (deterministic
+# rendering across machines), then system families resolved via fontconfig.
+TEXT_FONT_CANDIDATES = [
+    ("file", os.path.join(_ASSETS_DIR, "fonts", "ScheherazadeNew-Regular.ttf")),
+    ("family", "Amiri"),
+    ("family", "Noto Kufi Arabic"),
+    ("family", "DejaVu Sans"),
+]
+
+# Text placement zone — lower-center block on the vertical frame.
+TEXT_ZONE_MAX_WIDTH_FRAC = 0.86    # block width cap vs frame width
+TEXT_ZONE_BOTTOM_MARGIN_FRAC = 0.08  # gap between block bottom and frame bottom
+TEXT_ZONE_MAX_HEIGHT_FRAC = 0.34   # block height cap vs frame height
+TEXT_MAX_LINES = 6                 # hard wrap budget inside the zone
+
+# Glyph size bounds (fractions of frame width; 1080-wide reference design).
+TEXT_SIZE_MIN_FRAC = 0.042         # ≈45 px @1080 → legibility floor (SC-003)
+TEXT_SIZE_MAX_FRAC = 0.085         # ≈92 px @1080
+
+# Backing box behind the glyphs (contrast treatment, FR-004/SC-003).
+BACKING_COLOR_RGB = (17, 17, 17)   # near-black rounded box fill
+BACKING_OPACITY = 0.60             # alpha of the backing fill
+BACKING_PADDING_PX = 28            # padding around text at 1080-wide design
+TEXT_MIN_CONTRAST = 4.5            # WCAG-ish contrast floor vs backdrop
+
+# Feature defaults (request fields may override per call).
+SHOW_TEXT_DEFAULT = True
+HIGHLIGHT_WORDS_DEFAULT = False    # experimental word-level highlighting
+
+# Per-template styling profiles (keys match TEMPLATES below).
+# 'accent' drives the glyph color; backing opacity varies slightly so each
+# theme reads distinctly while staying within the contrast guard.
+TEXT_STYLE_PROFILES = {
+    "ramadan": {"accent": "#FFD98A", "backing_opacity": 0.62},
+    "normal":  {"accent": "#FFFFFF", "backing_opacity": 0.58},
+    "masjid":  {"accent": "#F2FBF4", "backing_opacity": 0.60},
+    "islamic": {"accent": "#FFF7E6", "backing_opacity": 0.60},
+}
+
+
 # =============================================================================
 # Feature flags
 # =============================================================================
