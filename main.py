@@ -162,8 +162,32 @@ BG_CACHE_DIR = _env_path("QURAN_BG_CACHE_DIR", os.path.join("cache", "background
 VISION_DIR = _env_path("QURAN_VISION_DIR", "vision")
 UI_PATH = _env_path("QURAN_UI_PATH", "UI.html")
 
-FFMPEG_EXE = shutil.which("ffmpeg") or "ffmpeg"
-FFPROBE_EXE = shutil.which("ffprobe") or "ffprobe"
+def _resolve_ffmpeg_bin(name: str) -> str:
+    """Resolve ffmpeg/ffprobe with env var > portable bin > PATH fallback."""
+    # 1. Explicit env var
+    env_key = f"QURAN_{name.upper()}_EXE"
+    env_val = os.environ.get(env_key)
+    if env_val:
+        # Allow relative paths too (resolve against EXEC_DIR)
+        if not os.path.isabs(env_val):
+            env_val = os.path.join(EXEC_DIR, env_val)
+        if os.path.isfile(env_val):
+            return env_val
+        # If env points to non-existent file, still honour it (let subprocess fail with clear error)
+        return env_val
+    # 2. Portable bin/ffmpeg lookup (documented in .env.example)
+    portable = os.path.join(EXEC_DIR, "bin", "ffmpeg", f"{name}.exe" if os.name == "nt" else name)
+    if os.path.isfile(portable):
+        return portable
+    portable2 = os.path.join(EXEC_DIR, "bin", "ffmpeg", name)
+    if os.path.isfile(portable2):
+        return portable2
+    # 3. PATH
+    return shutil.which(name) or name
+
+
+FFMPEG_EXE = _resolve_ffmpeg_bin("ffmpeg")
+FFPROBE_EXE = _resolve_ffmpeg_bin("ffprobe")
 
 # Cache management
 AUDIO_CACHE_MAX_SIZE_MB = _env("QURAN_AUDIO_CACHE_MAX_SIZE_MB", 500, int)  # Maximum cache size in MB
@@ -1233,7 +1257,7 @@ def update_progress(percent, status, stage=None, current_ayah=None, total_ayat=N
 def update_ayah_progress(current, total, stage='processing'):
     """Update progress for ayah processing with detailed info"""
     percent = int(10 + (70 * current / total)) if total > 0 else 10
-    status = f'┘à╪╣╪د┘╪ش╪ر ╪د┘╪ت┘è╪ر {current} ┘à┘ {total}...'
+    status = f'معالجة الآية {current} من {total}...'
 
     update_progress(
         percent=percent,
@@ -1294,6 +1318,14 @@ def record_download_failure():
     _circuit_breaker_failures += 1
     _circuit_breaker_last_failure = time.time()
 
+def _job_audio_path(idx: int) -> str:
+    """Return job-scoped temp audio path; falls back to legacy TEMP_DIR path."""
+    try:
+        return current_job().audio_path(idx)
+    except Exception:
+        return os.path.join(TEMP_DIR, f'audio_{idx:03d}.mp3')
+
+
 def download_audio(reciter_id, surah, ayah, idx):
     """Download audio for one ayah with enhanced retry logic and circuit breaker"""
     fn = f'{surah:03d}{ayah:03d}.mp3'
@@ -1307,8 +1339,8 @@ def download_audio(reciter_id, surah, ayah, idx):
 
     if os.path.exists(cached_path) and os.path.getsize(cached_path) > 1000:
         logging.debug(f"Using cached audio: {fn}")
-        # Copy to temp directory for processing
-        out = os.path.join(TEMP_DIR, f'audio_{idx:03d}.mp3')
+        # Copy to job-scoped temp path so parallel builds don't collide
+        out = _job_audio_path(idx)
         shutil.copy2(cached_path, out)
         return out
 
@@ -1320,7 +1352,7 @@ def download_audio(reciter_id, surah, ayah, idx):
         f'https://mp3.quranicaudio.com/quran/{reciter_id}/{fn}'
     ]
 
-    out = os.path.join(TEMP_DIR, f'audio_{idx:03d}.mp3')
+    out = _job_audio_path(idx)
 
     # Enhanced session with better retry strategy
     session = http_requests.Session()
@@ -1609,416 +1641,6 @@ def get_preprocessed_bg(bg_path, target_w=TARGET_W, target_h=TARGET_H):
         return bg_path  # Fallback to original
 
 
-
-
-# RESTORED FUNCTIONS
-def reset_progress():
-    """Reset the shared progress state to a fresh-build snapshot."""
-    current_progress.reset()
-
-def add_log(message):
-    """Append a log line to the shared progress state (thread-safe)."""
-    current_progress.append_log(message)
-    logging.info(f"PROGRESS: {message}")
-
-def update_progress(percent, status, stage=None, current_ayah=None, total_ayat=None):
-    """Update the shared progress state atomically (percent, ETA, etc.)."""
-    # Build the kwargs we want to write; filter out None so we don't
-    # clobber an existing value with ``None`` when the caller didn't
-    # pass an explicit stage/ayah/count.
-    updates = {'percent': percent, 'status': status}
-    if stage is not None:
-        updates['stage'] = stage
-    if current_ayah is not None:
-        updates['current_ayah'] = current_ayah
-    if total_ayat is not None:
-        updates['total_ayat'] = total_ayat
-
-    # The set() and calculate_eta() must happen under the same lock so
-    # readers never see a percent bump without a matching ETA.
-    with current_progress._lock:
-        current_progress.set(**updates)
-        current_progress.calculate_eta()
-
-    logging.info(f"STATUS ({percent}%): {status}")
-
-def update_ayah_progress(current, total, stage='processing'):
-    """Update progress for ayah processing with detailed info"""
-    percent = int(10 + (70 * current / total)) if total > 0 else 10
-    status = f'┘à╪╣╪د┘╪ش╪ر ╪د┘╪ت┘è╪ر {current} ┘à┘ {total}...'
-
-    update_progress(
-        percent=percent,
-        status=status,
-        stage=stage,
-        current_ayah=current,
-        total_ayat=total
-    )
-
-# =============================================================================
-# STEP 11: UTILITY FUNCTIONS
-# =============================================================================
-
-# Cache for ayah texts (avoid duplicate API calls)
-AYAH_TEXT_CACHE = {}
-
-def get_audio_duration_ffprobe(audio_path):
-    """Get audio duration using ffprobe"""
-    exe = FFPROBE_EXE or "ffprobe"
-
-    cmd = [
-        exe, "-v", "error", "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1", audio_path
-    ]
-    out = subprocess.run(cmd, capture_output=True, text=True, timeout=10, check=True)
-    return float(out.stdout.strip())
-
-# =============================================================================
-# STEP 12: DATA FETCHING (ENHANCED WITH RETRY & CIRCUIT BREAKER)
-# =============================================================================
-
-# Circuit breaker state
-_circuit_breaker_failures = 0
-_circuit_breaker_last_failure = 0
-_circuit_breaker_threshold = 5
-_circuit_breaker_timeout = 60  # seconds
-
-def is_circuit_breaker_open():
-    """Check if circuit breaker is open"""
-    global _circuit_breaker_failures, _circuit_breaker_last_failure
-
-    if _circuit_breaker_failures >= _circuit_breaker_threshold:
-        # Check if timeout has passed
-        if time.time() - _circuit_breaker_last_failure > _circuit_breaker_timeout:
-            _circuit_breaker_failures = 0  # Reset
-            return False
-        return True
-    return False
-
-def record_download_success():
-    """Record successful download"""
-    global _circuit_breaker_failures
-    _circuit_breaker_failures = 0
-
-def record_download_failure():
-    """Record download failure"""
-    global _circuit_breaker_failures, _circuit_breaker_last_failure
-    _circuit_breaker_failures += 1
-    _circuit_breaker_last_failure = time.time()
-
-def download_audio(reciter_id, surah, ayah, idx):
-    """Download audio for one ayah with enhanced retry logic and circuit breaker"""
-    fn = f'{surah:03d}{ayah:03d}.mp3'
-
-    # Check circuit breaker first
-    if is_circuit_breaker_open():
-        raise RuntimeError("Circuit breaker is open - too many consecutive failures")
-
-    # Check cache first
-    cached_path = get_cached_audio_path(reciter_id, surah, ayah)
-
-    if os.path.exists(cached_path) and os.path.getsize(cached_path) > 1000:
-        logging.debug(f"Using cached audio: {fn}")
-        # Copy to temp directory for processing
-        out = os.path.join(TEMP_DIR, f'audio_{idx:03d}.mp3')
-        shutil.copy2(cached_path, out)
-        return out
-
-    # Try multiple sources with different domains
-    sources = [
-        f'https://everyayah.com/data/{reciter_id}/{fn}',
-        f'https://download.quranicaudio.com/quran/{reciter_id}/{fn}',
-        f'https://www.everyayah.com/data/{reciter_id}/{fn}',
-        f'https://mp3.quranicaudio.com/quran/{reciter_id}/{fn}'
-    ]
-
-    out = os.path.join(TEMP_DIR, f'audio_{idx:03d}.mp3')
-
-    # Enhanced session with better retry strategy
-    session = http_requests.Session()
-    retry_strategy = Retry(
-        total=5,  # Increased retries
-        backoff_factor=2,  # Exponential backoff
-        status_forcelist=[429, 500, 502, 503, 504, 408],  # Include timeout
-        allowed_methods=["GET"]
-    )
-    adapter = http_requests.adapters.HTTPAdapter(max_retries=retry_strategy)
-    session.mount("https://", adapter)
-    session.mount("http://", adapter)
-
-    for attempt, url in enumerate(sources, 1):
-        try:
-            logging.debug(f"Downloading audio from source {attempt}: {url}")
-
-            # Add exponential delay between attempts
-            if attempt > 1:
-                delay = min(2 ** (attempt - 2), 10)  # Max 10 seconds
-                time.sleep(delay)
-                logging.debug(f"Retry delay: {delay}s")
-
-            r = session.get(url, timeout=30)  # Longer timeout
-            r.raise_for_status()
-
-            with open(out, 'wb') as f:
-                f.write(r.content)
-
-            # Verify file has content
-            if os.path.getsize(out) < 1000:
-                raise ValueError(f"Audio file too small: {os.path.getsize(out)} bytes")
-
-            logging.debug(f"Audio downloaded: {fn} ({os.path.getsize(out)} bytes)")
-
-            # Save to cache (the downloaded file as-is)
-            try:
-                os.makedirs(os.path.dirname(cached_path), exist_ok=True)
-                shutil.copy2(out, cached_path)
-                logging.debug(f"Audio cached: {cached_path}")
-            except Exception as e:
-                logging.warning(f"Failed to cache audio: {e}")
-
-            # ظ£à NO TRIMMING AT ALL - Keep original Quran recitation intact
-            record_download_success()
-            return out
-
-        except Exception as e:
-            logging.warning(f"Source {attempt} failed: {e}")
-            record_download_failure()
-
-            if attempt < len(sources):
-                continue
-            else:
-                # All sources failed - check if circuit breaker should open
-                if _circuit_breaker_failures >= _circuit_breaker_threshold:
-                    logging.error("Circuit breaker opened due to consecutive failures")
-
-                raise RuntimeError(f"Failed to download audio for {surah}:{ayah} from all sources")
-
-def download_audio_parallel(reciter_id, ayah_list, max_workers=4):
-    """Download multiple audio files in parallel with rate limiting"""
-    import concurrent.futures
-    import threading
-
-    results = {}
-    download_lock = threading.Lock()
-    last_download_time = 0
-    min_delay = 0.5  # Minimum delay between downloads to respect rate limits
-
-    def download_with_delay(args):
-        nonlocal last_download_time
-
-        reciter_id, surah, ayah, idx = args
-
-        # Rate limiting
-        with download_lock:
-            current_time = time.time()
-            if current_time - last_download_time < min_delay:
-                time.sleep(min_delay - (current_time - last_download_time))
-            last_download_time = time.time()
-
-        try:
-            audio_path = download_audio(reciter_id, surah, ayah, idx)
-            return (ayah, audio_path, None)
-        except Exception as e:
-            return (ayah, None, str(e))
-
-    # Prepare arguments
-    download_args = [(reciter_id, ayah['surah'], ayah['ayah'], ayah['idx'])
-                     for ayah in ayah_list]
-
-    # Download in parallel
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_ayah = {executor.submit(download_with_delay, args): args for args in download_args}
-
-        for future in concurrent.futures.as_completed(future_to_ayah):
-            ayah, audio_path, error = future.result()
-            if error:
-                logging.error(f"Failed to download ayah {ayah}: {error}")
-                results[ayah] = {'error': error}
-            else:
-                results[ayah] = {'path': audio_path}
-                logging.debug(f"Downloaded ayah {ayah} in parallel")
-
-    return results
-
-def get_ayah_text(surah, ayah):
-    """Fetch ayah text from API with cache"""
-    cache_key = f"{surah}:{ayah}"
-
-    # Check cache first
-    if cache_key in AYAH_TEXT_CACHE:
-        logging.debug(f"Using cached text for {cache_key}")
-        return AYAH_TEXT_CACHE[cache_key]
-
-    try:
-        resp = http_requests.get(
-            f'https://api.alquran.cloud/v1/ayah/{surah}:{ayah}/quran-uthmani',
-            timeout=10
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        text = data['data']['text'].replace('\ufeff', '').replace('\u200b', '').strip()
-
-        if not text or len(text) < 5:
-            raise ValueError(f"Ayah text too short: {text}")
-
-        # Cache the result
-        AYAH_TEXT_CACHE[cache_key] = text
-        return text
-    except Exception as e:
-        logging.debug(f"Text fetch failed, retrying once: {e}")
-        # One retry
-        resp = http_requests.get(
-            f'https://api.alquran.cloud/v1/ayah/{surah}:{ayah}/quran-uthmani',
-            timeout=10
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        text = data['data']['text'].replace('\ufeff', '').replace('\u200b', '').strip()
-        AYAH_TEXT_CACHE[cache_key] = text
-        return text
-
-# =============================================================================
-# STEP 13: BACKGROUND HANDLING (CACHED)
-# =============================================================================
-
-BG_CACHE = {}
-
-def init_bg_cache():
-    """Scan background folders once at startup"""
-    global BG_CACHE
-    styles = ['nature', 'islamic', 'masjid', 'night']  # Removed 'colorful'
-
-    for style in styles:
-        style_dir = os.path.join(VISION_DIR, style)
-        files = []
-
-        # Check if style folder exists
-        if os.path.isdir(style_dir):
-            files = [f for f in os.listdir(style_dir) if f.endswith('.mp4')]
-            logging.debug(f"Found {len(files)} files in {style_dir}/")
-        else:
-            # Fallback: try old pattern-based naming in main vision folder
-            pattern = f"{style}_part"
-            space_pattern = pattern.replace('_', ' ')
-            files = [f for f in os.listdir(VISION_DIR)
-                     if (f.startswith(pattern) or f.startswith(space_pattern))
-                     and f.endswith('.mp4')]
-            if files:
-                logging.debug(f"Fallback: Found {len(files)} files with pattern '{pattern}' in main folder")
-
-        BG_CACHE[style] = files
-        BG_CACHE[f"{style}_part"] = files  # Also store by pattern for fallback
-
-    logging.debug(f"BG cache initialized: {len(BG_CACHE)} styles")
-
-# NOTE: init_bg_cache() is called inside the __main__ block (bottom of file)
-# so it runs after all other definitions are in place.
-
-def pick_bg(style='nature', count=1):
-    """Select background video(s) from style-specific folders"""
-    init_bg_cache() # Refresh list of available files
-
-    files = BG_CACHE.get(style, [])
-
-    # Fallback to nature if style has no files
-    if not files:
-        files = BG_CACHE.get('nature', [])
-
-    if not files:
-        raise ValueError(f"No background videos found for style '{style}' or 'nature'")
-
-    if count == 1:
-        # Return full path to the selected file
-        selected_file = random.choice(files)
-        style_dir = os.path.join(VISION_DIR, style)
-
-        # Check if style folder exists, fallback to main vision folder
-        if os.path.isdir(style_dir):
-            return os.path.join(style_dir, selected_file)
-        else:
-            return os.path.join(VISION_DIR, selected_file)
-    else:
-        selected = random.sample(files, min(count, len(files)))
-        style_dir = os.path.join(VISION_DIR, style)
-
-        if os.path.isdir(style_dir):
-            return [os.path.join(style_dir, f) for f in selected]
-        else:
-            return [os.path.join(VISION_DIR, f) for f in selected]
-
-def get_preprocessed_bg(bg_path, target_w=TARGET_W, target_h=TARGET_H):
-    """Get or create preprocessed background video (cached)"""
-    os.makedirs(BG_CACHE_DIR, exist_ok=True)
-    base = os.path.splitext(os.path.basename(bg_path))[0]
-    cached_path = os.path.join(BG_CACHE_DIR, f"{base}_{target_w}x{target_h}.mp4")
-
-    if os.path.isfile(cached_path):
-        # Check if file is valid (not 0 or too small, which indicates corruption)
-        if os.path.getsize(cached_path) > 5000:  # At least 5KB
-            # Additional validation: try to read the file with FFprobe
-            try:
-                result = subprocess.run([
-                    FFPROBE_EXE,
-                    '-v', 'error',
-                    '-show_format',
-                    '-show_streams',
-                    cached_path
-                ], capture_output=True, text=True, timeout=10)
-                if result.returncode == 0:
-                    logging.debug(f"Using cached background: {os.path.basename(cached_path)}")
-                    return cached_path
-                else:
-                    logging.warning(f"Corrupted cache file (FFprobe failed): {cached_path}")
-            except Exception as e:
-                logging.warning(f"Cache validation failed: {e}")
-
-            # Remove corrupted file
-            try:
-                os.remove(cached_path)
-                logging.info(f"Removed corrupted cache file: {cached_path}")
-            except:
-                pass
-        else:
-            logging.warning(f"Cache file too small: {cached_path}")
-            try:
-                os.remove(cached_path)
-            except:
-                pass
-
-    # Normalize BG to avoid FFmpeg concat/filter issues (fps/pix_fmt/scale)
-    logging.info(f"Preprocessing background: {os.path.basename(bg_path)}")
-    vf = f"scale={target_w}:{target_h}:force_original_aspect_ratio=increase,crop={target_w}:{target_h},fps=30,format=yuv420p"
-    cmd = [
-        FFMPEG_EXE, "-y", "-i", bg_path,
-        "-vf", vf, "-an",
-        "-r", "30",
-        "-c:v", "libx264",
-        "-preset", "ultrafast", "-crf", "32", "-threads", "4",
-        "-pix_fmt", "yuv420p",
-        cached_path
-    ]
-
-    try:
-        logging.info(f"Running FFmpeg preprocessing: {' '.join(cmd[:8])}...")
-        result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
-
-        # Verify the output file was created successfully
-        if os.path.exists(cached_path) and os.path.getsize(cached_path) > 5000:
-            logging.info(f"Background cached successfully: {os.path.basename(cached_path)}")
-            return cached_path
-        else:
-            logging.error(f"FFmpeg output file invalid: {cached_path}")
-            return bg_path  # Fallback to original
-
-    except subprocess.TimeoutExpired:
-        logging.warning(f"Background preprocessing timeout, using original: {os.path.basename(bg_path)}")
-        return bg_path  # Fallback to original
-    except subprocess.CalledProcessError as e:
-        logging.error(f"Background preprocessing failed: {e.stderr}")
-        return bg_path  # Fallback to original
-    except Exception as e:
-        logging.error(f"Unexpected error in preprocessing: {e}")
-        return bg_path  # Fallback to original
 
 
 # STEP 18: API ROUTES (SIMPLIFIED)
