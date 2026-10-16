@@ -2,7 +2,7 @@
 
 ## What this is
 
-Flask web app that generates Quran recitation reels (recitation audio synced over background video). Current code renders audio + background video only — but text-overlay rendering is being reintroduced: Constitution v2.0.0 (2026-08-22) redefined Principle I to permit/require synchronized ayah text display; see `specs/002-ayah-text-sync/spec.md` (planned, not yet implemented).
+Flask web app that generates Quran recitation reels (recitation audio synced over background video). Synchronized ayah text display is implemented behind toggles: `showText` (default on) composites each ayah's exact Uthmani text onto its segment, and `highlightWords` (default off, experimental) adds karaoke-style word highlighting — per Constitution v2.0.0 Principle I; see `specs/002-ayah-text-sync/`.
 
 - Backend: single `main.py` (~2,100 lines) + small `quran_reels/` package
 - Frontend: static `UI.html` + `main.js` + `style.css`, served by Flask (no build step)

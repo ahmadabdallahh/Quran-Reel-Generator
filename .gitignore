@@ -30,6 +30,7 @@ wheels/
 MANIFEST
 
 # Virtual environments
+.venv/
 venv/
 env/
 ENV/
@@ -66,6 +67,7 @@ settings.json
 
 # Cache and backup files
 .cache/
+cache/
 *.cache
 *.bak
 *.backup
@@ -165,4 +167,8 @@ celerybeat-schedule
 .dmypy.json
 dmypy.json
 
-last version/
+# Hugging Face / Docker
+.huggingface/
+
+# Keep last version folder if used by some tools (was stray entry)
+# last version/
