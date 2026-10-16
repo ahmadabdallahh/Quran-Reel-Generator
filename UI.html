@@ -10,6 +10,7 @@
 </head>
 
 <body>
+    <button type="button" id="themeToggle" class="theme-toggle" aria-label="تبديل المظهر" aria-pressed="false"></button>
     <div class="particles" id="particles"></div>
 
     <header class="header">
@@ -122,7 +123,7 @@
                             <input type="checkbox" id="highlightWordsCheckbox" disabled />
                             <span>تظليل الكلمات مع التلاوة (تجريبي)</span>
                         </label>
-                        <p class="form-hint">يضيء كل كلمة أثناء نطقها — يتطلب تفعيل إظهار النص</p>
+                        <p class="form-hint">يضيء كل كلمة أثناء نطقها (يتطلب تفعيل إظهار النص)</p>
                     </div>
                     <div class="form-group">
                         <label class="form-label" for="textPositionSelect">موضع نص الآية</label>
@@ -152,10 +153,10 @@
                         <label class="form-label" for="transitionStyleSelect">أسلوب الانتقال بين الآيات</label>
                         <select id="transitionStyleSelect" class="form-control">
                             <option value="" selected>افتراضي (حسب القالب)</option>
-                            <option value="cinematic">سينمائي — قطع حاد (بدون تداخل)</option>
-                            <option value="dynamic">متحرك — تداخل (xfade) بين كل آية</option>
-                            <option value="smooth">سلس — تداخل خفيف بين بعض الآيات فقط</option>
-                            <option value="cut">قطع فقط — لا تداخل ولا تلاشي</option>
+                            <option value="cinematic">سينمائي: قطع حاد (بدون تداخل)</option>
+                            <option value="dynamic">متحرك: تداخل (xfade) بين كل آية</option>
+                            <option value="smooth">سلس: تداخل خفيف بين بعض الآيات فقط</option>
+                            <option value="cut">قطع فقط: لا تداخل ولا تلاشي</option>
                         </select>
                     </div>
                     <div class="form-group full-width">

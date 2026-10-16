@@ -130,6 +130,13 @@ Emerald acts and gold glows; rarity is the point of both.
 **The Two Lights Rule.** Emerald moves things forward; gold marks what matters.
 No element wears both jobs, and neither appears where it has no role.
 
+### Light Theme
+A composed warm-paper sibling, never an inversion: paper canvas (#f4f1e8),
+ink text (#1d2b23), deepened action emerald (#0c6e47) and honey gold (#8a5f16)
+so every pair still passes AA. Fills keep the bright emerald gradient with
+deep-green ink. The build log stays a dark terminal in both themes. Dark is
+the default; the header toggle persists the choice.
+
 ## Typography
 
 **Display Font:** Amiri (serif fallback)

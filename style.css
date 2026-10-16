@@ -5,6 +5,7 @@
    ============================================================================ */
 
 :root {
+    color-scheme: dark;
     --primary-gold: #e8b64c;
     --primary-gold-light: #f6d47e;
     --primary-gold-dark: #a97e2c;
@@ -25,6 +26,14 @@
     --shadow-gold: 0 8px 28px rgba(232, 182, 76, 0.22);
     --shadow-action: 0 10px 30px rgba(52, 211, 153, 0.28);
     --shadow-premium: 0 20px 50px rgba(0, 0, 0, 0.5);
+    --surface-wash: rgba(255, 255, 255, 0.05);
+    --term-bg: #060a08;
+    --term-text: #f7f4ea;
+    --term-muted: rgba(247, 244, 234, 0.55);
+    --term-accent: #34d399;
+    --option-bg: #111915;
+    --option-ink: #f7f4ea;
+    --track: #060a08;
 }
 
 * {
@@ -315,8 +324,8 @@ select.form-control {
 
 /* Fix dropdown options background */
 select.form-control option {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
+    background: var(--option-bg);
+    color: var(--option-ink);
     padding: 10px 15px;
 }
 
@@ -447,7 +456,7 @@ select.form-control::-webkit-scrollbar-thumb {
 }
 
 .btn-secondary {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--surface-wash);
     border: 2px solid var(--border-glow);
     color: var(--text-primary);
 }
@@ -600,8 +609,8 @@ select.form-control::-webkit-scrollbar-thumb {
     margin-top: 40px;
     padding: 30px;
     border-radius: 24px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--surface-wash);
+    border: 1px solid var(--border-glow);
     display: none;
 }
 
@@ -644,7 +653,7 @@ select.form-control::-webkit-scrollbar-thumb {
 .progress-track {
     width: 100%;
     height: 14px;
-    background: var(--bg-dark);
+    background: var(--track);
     border-radius: 20px;
     overflow: hidden;
     margin-bottom: 25px;
@@ -688,7 +697,7 @@ select.form-control::-webkit-scrollbar-thumb {
 }
 
 .log-terminal {
-    background: #000;
+    background: var(--term-bg);
     border-radius: 12px;
     padding: 20px;
     font-family: 'Consolas', monospace;
@@ -701,11 +710,11 @@ select.form-control::-webkit-scrollbar-thumb {
 
 .log-line {
     margin-bottom: 8px;
-    color: var(--text-muted);
+    color: var(--term-muted);
 }
 
 .log-line span {
-    color: var(--action);
+    color: var(--term-accent);
     margin-left: 10px;
 }
 
@@ -785,14 +794,15 @@ select.form-control::-webkit-scrollbar-thumb {
 .tool-select {
     border-radius: 12px;
     border: 1px solid var(--border-glow);
-    background: rgba(255, 255, 255, 0.08);
-    color: #fff;
+    background: var(--surface-wash);
+    color: var(--text-primary);
     padding: 8px 10px;
     cursor: pointer;
 }
 
 .tool-select option {
-    color: #000;
+    background: var(--option-bg);
+    color: var(--option-ink);
 }
 
 .time-label {
@@ -854,7 +864,7 @@ select.form-control::-webkit-scrollbar-thumb {
 .social-icon {
     width: 50px;
     height: 50px;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--surface-wash);
     border: 1px solid var(--border-glow);
     border-radius: 15px;
     display: flex;
@@ -887,6 +897,86 @@ select.form-control::-webkit-scrollbar-thumb {
     color: var(--primary-gold);
     text-decoration: none;
     font-weight: 700;
+}
+
+/* ----- Light theme (composed warm paper, not an inversion) ----- */
+[data-theme="light"] {
+    color-scheme: light;
+    --primary-gold: #8a5f16;
+    --primary-gold-light: #8a5f16;
+    --primary-gold-dark: #6e4a10;
+    --action: #0c6e47;
+    --bg-dark: #f4f1e8;
+    --bg-secondary: #fffdf6;
+    --bg-card: rgba(255, 253, 246, 0.82);
+    --text-primary: #1d2b23;
+    --text-secondary: rgba(29, 43, 35, 0.78);
+    --text-muted: rgba(29, 43, 35, 0.68);
+    --border-glow: rgba(138, 95, 22, 0.3);
+    --border-action: rgba(12, 110, 71, 0.4);
+    --gradient-premium: linear-gradient(180deg, #f4f1e8 0%, #e7e1cf 100%);
+    --shadow-gold: 0 8px 28px rgba(138, 95, 22, 0.18);
+    --shadow-action: 0 10px 30px rgba(12, 110, 71, 0.22);
+    --shadow-premium: 0 20px 50px rgba(74, 60, 25, 0.16);
+    --surface-wash: rgba(29, 43, 35, 0.05);
+    --option-bg: #fffdf6;
+    --option-ink: #1d2b23;
+    --track: #e0d9c2;
+}
+
+[data-theme="light"] .form-control,
+[data-theme="light"] .counter-control {
+    border-color: rgba(138, 95, 22, 0.28);
+}
+
+[data-theme="light"] select.form-control {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%230c6e47' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+}
+
+[data-theme="light"] .glass-card::before {
+    background: linear-gradient(135deg, rgba(138, 95, 22, 0.07) 0%, transparent 50%);
+}
+
+[data-theme="light"] .social-icon:hover {
+    background: var(--action);
+    color: #f2fbf6;
+}
+
+/* ----- Theme toggle ----- */
+.theme-toggle {
+    position: fixed;
+    top: 16px;
+    inset-inline-end: 16px;
+    z-index: 50;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 1px solid var(--border-glow);
+    background: var(--bg-card);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: var(--primary-gold);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--shadow-premium);
+    transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.theme-toggle:hover {
+    transform: scale(1.07);
+    border-color: var(--action);
+}
+
+.theme-toggle:active {
+    transform: scale(0.94);
+}
+
+.theme-toggle svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
 }
 
 /* ----- Browser surfaces + control states ----- */
