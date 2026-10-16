@@ -446,35 +446,6 @@ function syncHighlightToggle() {
 showTextCheckbox.addEventListener('change', syncHighlightToggle);
 syncHighlightToggle();
 
-// --- Theme toggle (dark default, choice persisted) ---
-const themeToggle = document.getElementById('themeToggle');
-const ICON_MOON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11z"/></svg>';
-const ICON_SUN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0-6v2.5M12 15.5V21M1 12h2.5M20.5 12H23M4.2 4.2l1.8 1.8M18 18l1.8 1.8M19.8 4.2L18 6M6 18l-1.8 1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
-
-function applyTheme(theme) {
-    const value = theme === 'light' ? 'light' : 'dark';
-    if (value === 'light') {
-        document.documentElement.dataset.theme = 'light';
-    } else {
-        delete document.documentElement.dataset.theme;
-    }
-    try {
-        localStorage.setItem('qr-theme', value);
-    } catch (e) { /* private mode: stay on default */ }
-    themeToggle.innerHTML = value === 'light' ? ICON_SUN : ICON_MOON;
-    themeToggle.setAttribute('aria-pressed', value === 'light' ? 'true' : 'false');
-}
-
-let storedTheme = 'dark';
-try {
-    storedTheme = localStorage.getItem('qr-theme') || 'dark';
-} catch (e) { /* private mode: stay on default */ }
-applyTheme(storedTheme);
-
-themeToggle.addEventListener('click', () => {
-    applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
-});
-
 // --- Video player controls (dependency-free player toolbar) ---
 const previewBtnDefaultLabel = previewBtn.innerHTML;
 const playPauseBtn = document.getElementById('playPauseBtn');
