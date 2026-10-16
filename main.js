@@ -306,6 +306,7 @@ generateBtn.addEventListener('click', async (e) => {
         format: formatSelect.value,
         includeBismillah: document.getElementById('bismillahCheckbox').checked,
         showText: document.getElementById('showTextCheckbox').checked,
+        highlightWords: document.getElementById('highlightWordsCheckbox').checked,
         targetDurationSeconds: (() => {
             const v = document.getElementById('targetDurationInput').value;
             const n = parseInt(v, 10);
@@ -353,7 +354,8 @@ previewBtn.addEventListener('click', async () => {
         surah: parseInt(surahSelect.value),
         ayah: parseInt(startAyahInput.value),
         template: templateSelect.value,
-        showText: document.getElementById('showTextCheckbox').checked
+        showText: document.getElementById('showTextCheckbox').checked,
+        highlightWords: document.getElementById('highlightWordsCheckbox').checked
     };
 
     try {
@@ -374,3 +376,19 @@ previewBtn.addEventListener('click', async () => {
         console.error('Preview error:', e);
     }
 });
+
+// Word highlighting requires the ayah text overlay — keep the toggle
+// disabled (and cleared) whenever "show text" is off.
+const showTextCheckbox = document.getElementById('showTextCheckbox');
+const highlightWordsCheckbox = document.getElementById('highlightWordsCheckbox');
+
+function syncHighlightToggle() {
+    const enabled = showTextCheckbox.checked;
+    highlightWordsCheckbox.disabled = !enabled;
+    if (!enabled) {
+        highlightWordsCheckbox.checked = false;
+    }
+}
+
+showTextCheckbox.addEventListener('change', syncHighlightToggle);
+syncHighlightToggle();

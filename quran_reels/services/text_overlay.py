@@ -39,7 +39,6 @@ from quran_reels.config import (
 )
 
 _FONT_CACHE: dict[int, ImageFont.FreeTypeFont] = {}
-_HIGHLIGHT_PATH: str | None = None
 
 _LINE_LEADING = 1.28   # Scheherazade metrics already carry tashkeel headroom
 
@@ -215,17 +214,18 @@ def _fit_layout(text: str, frame_w: int, frame_h: int, padding: int):
 
 def get_highlight_png(out_path: str, w: int, h: int,
                       color=(255, 205, 92, 120)) -> str:
-    """Soft radial-ish glow blob reused behind the active word."""
-    global _HIGHLIGHT_PATH
-    if _HIGHLIGHT_PATH and os.path.exists(_HIGHLIGHT_PATH):
-        return _HIGHLIGHT_PATH
+    """Soft radial-ish glow blob reused behind the active word.
+
+    Always (re)writes ``out_path`` — callers scope the filename per
+    job/ayah so parallel workers can never read each other's sprite
+    mid-write (no module-global cache on purpose).
+    """
     margin = max(6, min(w, h) // 6)
     img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     draw.ellipse([margin, margin, w - margin, h - margin], fill=color)
     img = img.filter(ImageFilter.GaussianBlur(radius=margin))
     img.save(out_path)
-    _HIGHLIGHT_PATH = out_path
     return out_path
 
 
@@ -258,7 +258,8 @@ def word_windows(words: list[str], duration_sec: float | None):
 def render_ayah_text_png(text: str, out_path: str, template: str = "normal",
                          frame_w: int = 1080, frame_h: int = 1920,
                          duration_sec: float | None = None,
-                         with_highlight: bool = False) -> dict:
+                         with_highlight: bool = False,
+                         highlight_path: str | None = None) -> dict:
     """Render ``text`` (verbatim!) to a transparent full-frame PNG.
 
     Returns metadata::
@@ -334,10 +335,10 @@ def render_ayah_text_png(text: str, out_path: str, template: str = "normal",
         hb = max(b["h"] for b in boxes) if boxes else line_h
         wb = max(b["w"] for b in boxes) if boxes else int(6 * scale)
         hw, hh = int(wb * 1.25), int(hb * 0.95)
+        sprite_path = highlight_path or os.path.join(
+            os.path.dirname(out_path), f"highlight_{hw}x{hh}.png")
         meta["highlight"] = {
-            "png": get_highlight_png(
-                os.path.join(os.path.dirname(out_path),
-                             f"highlight_{hw}x{hh}.png"), hw, hh),
+            "png": get_highlight_png(sprite_path, hw, hh),
             "w": hw, "h": hh,
         }
     return meta

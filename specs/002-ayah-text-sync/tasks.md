@@ -135,19 +135,19 @@ reel.
 
 ### Implementation for User Story 2
 
-- [ ] T013 [US2] In `quran_reels/services/text_overlay.py`: replace fixed
+- [x] T013 [US2] In `quran_reels/services/text_overlay.py`: replace fixed
       size with measured auto-fit — binary-search font size between
       `TEXT_SIZE_MIN_PX`/`MAX` until wrapped block fits `TEXT_ZONE` width and
       max-lines budget; never clip, never drop below the legibility floor
       (FR-006/SC-004 extremes e.g. surah 2 ayah 255)
-- [ ] T014 [US2] Populate per-theme values in `TEXT_STYLE_PROFILES` inside
+- [x] T014 [US2] Populate per-theme values in `TEXT_STYLE_PROFILES` inside
       `quran_reels/config.py` for keys `ramadan`, `normal`, `masjid`,
       `islamic` (accent colors, backing opacity variants) matching existing
       `TEMPLATES` entries
-- [ ] T015 [US2] In `quran_reels/services/text_overlay.py`: compute effective
+- [x] T015 [US2] In `quran_reels/services/text_overlay.py`: compute effective
       glyph-vs-backing contrast and automatically thicken shadow/backing
       until ≥4.5:1 (SC-003) instead of trusting static opacity
-- [ ] T016 [US2] In `main.py` `build_video()`: resolve the active
+- [x] T016 [US2] In `main.py` `build_video()`: resolve the active
       TextStyleProfile ONCE from the chosen template and pass that single
       instance to every segment's render call — no per-segment re-derivation
       (FR-009 consistency)
@@ -168,20 +168,20 @@ identical to US1/US2 behavior.
 
 ### Implementation for User Story 3
 
-- [ ] T017 [US3] Extend `quran_reels/services/text_overlay.py`: export word
+- [x] T017 [US3] Extend `quran_reels/services/text_overlay.py`: export word
       bounding boxes (index, x/y/w/h) from the RAQM layout alongside the PNG
       so overlays can target exact word positions
-- [ ] T018 [US3] In `quran_reels/services/text_overlay.py`: implement
+- [x] T018 [US3] In `quran_reels/services/text_overlay.py`: implement
       proportional word-window estimation — split audio duration by
       cumulative character length per word producing strictly increasing
       `[start, end]` windows (research.md D9)
-- [ ] T019 [US3] In `main.py` surviving `build_segment_ffmpeg()`: when
+- [x] T019 [US3] In `main.py` surviving `build_segment_ffmpeg()`: when
       highlighting is active, generate/composite ONE reusable gold radial
       highlight image positioned per word with
       `enable='between(t,start,end)'` overlay expressions driven by the
       exported boxes/windows — a single moving highlight layer, not one
       input per word
-- [ ] T020 [US3] Plumb `highlight_words` (default `HIGHLIGHT_WORDS_DEFAULT`)
+- [x] T020 [US3] Plumb `highlight_words` (default `HIGHLIGHT_WORDS_DEFAULT`)
       through `generate_video()`/`preview_video()` routes in `main.py`, the
       worker args, and a `UI.html`/`main.js` toggle; when timings are
       unavailable or the flag is off, fall back cleanly to plain full-ayah
@@ -196,16 +196,16 @@ disabled state byte-comparable to US2 output.
 
 **Purpose**: Docs truthfulness, hygiene, and full-suite verification.
 
-- [ ] T021 [P] Flip the status note in `AGENTS.md` from "planned, not yet
+- [x] T021 [P] Flip the status note in `AGENTS.md` from "planned, not yet
       implemented" to implemented-behind-toggle for ayah text rendering,
       referencing `specs/002-ayah-text-sync/`
-- [ ] T022 In `main.py` `cleanup_temp()`/atexit path: confirm generated
+- [x] T022 In `main.py` `cleanup_temp()`/atexit path: confirm generated
       `{job}_text_*.png` artifacts match the existing temp-cleanup patterns
       and are removed after jobs (data-dir hygiene)
-- [ ] T023 Execute the FULL `specs/002-ayah-text-sync/quickstart.md` suite
+- [x] T023 Execute the FULL `specs/002-ayah-text-sync/quickstart.md` suite
       including Scenario 7 performance budget (≤20% overhead) and Scenario 1
       smoke; paste the results summary into the PR description
-- [ ] T024 Final trap audit: `grep -n "^def "` over `main.py`, confirm every
+- [x] T024 Final trap audit: `grep -n "^def "` over `main.py`, confirm every
       function this feature touched had exactly one surviving definition
       edited (no dead-code edits), per research.md D10
 

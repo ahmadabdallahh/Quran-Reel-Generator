@@ -94,6 +94,7 @@ from quran_reels.config import (
     BISMILLAH_DURATION_SEC,
     BISMILLAH_SKIP_SURAHS,
     SHOW_TEXT_DEFAULT,
+    HIGHLIGHT_WORDS_DEFAULT,
 )
 from quran_reels.services.text_overlay import render_ayah_text_png, resolve_profile
 from quran_reels.services.background import (
@@ -262,9 +263,15 @@ class JobContext:
         """Per-ayah rendered ayah-text overlay PNG (feature 002)."""
         return os.path.join(TEMP_DIR, f"{self.job_id}_text_{idx:03d}.png")
 
-    def highlight_png(self) -> str:
-        """Reusable word-highlight sprite for this build (feature 002 US3)."""
-        return os.path.join(TEMP_DIR, f"{self.job_id}_highlight.png")
+    def highlight_png(self, idx: int) -> str:
+        """Per-ayah word-highlight sprite for this build (feature 002 US3).
+
+        Scoped per ayah (not per job) because parallel workers each
+        render their own sprite at their own ayah's word-box size — a
+        single job-wide file would race between the PIL write and the
+        FFmpeg read.
+        """
+        return os.path.join(TEMP_DIR, f"{self.job_id}_highlight_{idx:03d}.png")
 
     # ---- Bismillah (single segment, ayah_num=0) ----
 
@@ -561,11 +568,41 @@ atexit.register(cleanup_temp)
 # =============================================================================
 # STEP 4: FIND BINARIES (FFMPEG, FFprobe)
 # =============================================================================
-# Text rendering removed — see git log.  The app now produces audio + background
-# video only; no Arabic text overlay, no font loading, no PIL text rendering.
+# Feature 002-ayah-text-sync: Arabic text overlay rendering lives in
+# quran_reels/services/text_overlay.py (Pillow + RAQM); the PNG it returns
+# is composited in build_segment_ffmpeg() below via an extra overlay input.
 # =============================================================================
 
-def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_last=True, ayah_num=None, surah_name=None, text_png_path=None):
+# Feature 002 US3: hard cap on per-segment word-highlight overlay nodes so a
+# very long ayah (e.g. 2:255) can't blow up the filter_complex graph.
+HIGHLIGHT_MAX_LAYERS = 60
+
+
+def _merge_highlight_boxes(boxes, windows):
+    """Pair word boxes with timing windows, capping layer count at
+    ``HIGHLIGHT_MAX_LAYERS`` by repeatedly merging adjacent entries
+    (union bounding box, union time span).  Keeps the FFmpeg graph
+    bounded for extreme ayahs; short ayahs pass through untouched."""
+    pairs = list(zip(boxes, windows))
+    while len(pairs) > HIGHLIGHT_MAX_LAYERS:
+        merged = []
+        for i in range(0, len(pairs) - 1, 2):
+            (b1, w1), (b2, w2) = pairs[i], pairs[i + 1]
+            x0 = min(b1["x"], b2["x"])
+            y0 = min(b1["y"], b2["y"])
+            x1 = max(b1["x"] + b1["w"], b2["x"] + b2["w"])
+            y1 = max(b1["y"] + b1["h"], b2["y"] + b2["h"])
+            merged.append((
+                {"x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0},
+                (min(w1[0], w2[0]), max(w1[1], w2[1])),
+            ))
+        if len(pairs) % 2:
+            merged.append(pairs[-1])
+        pairs = merged
+    return pairs
+
+
+def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_last=True, ayah_num=None, surah_name=None, text_png_path=None, highlight=None):
     """Build one video segment with FFmpeg — background + audio, with optional ayah number watermark.
 
     Args:
@@ -582,6 +619,12 @@ def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_las
       text_png_path: Optional full-frame transparent PNG (from
         ``quran_reels.services.text_overlay``) composited above the
         background chain and below the outro fade.  Feature 002-ayah-text-sync.
+      highlight: Optional dict ``{png, w, h, words, windows}`` enabling
+        word-level read-along highlighting (feature 002 US3).  ONE glow
+        sprite input is repositioned per word via
+        ``enable='between(t,start,end)'`` — never one input per word.
+        Requires ``text_png_path``; silently skipped (plain display
+        fallback, FR-011) when boxes/windows are missing or mismatched.
     """
     if not os.path.exists(audio_path):
         raise FileNotFoundError(f"Audio missing: {audio_path}")
@@ -623,6 +666,38 @@ def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_las
         text_idx = n + 1
         inputs.extend(["-i", text_png_path])
 
+    # Word-level read-along highlight (feature 002 US3): build ONE chain
+    # of overlay nodes driven by a single reusable glow-sprite input.
+    # Composited ABOVE the text so the active word is spotlit, and
+    # BEFORE the outro fade so the whole composite still eases out
+    # together.  Any inconsistency in meta → plain display (FR-011).
+    hl_chain = ""
+    hl_final = None
+    if text_idx is not None and highlight:
+        hl_png = highlight.get("png")
+        hl_boxes = highlight.get("words") or []
+        hl_windows = highlight.get("windows")
+        if (hl_png and os.path.exists(hl_png) and hl_boxes and hl_windows
+                and len(hl_windows) == len(hl_boxes)):
+            pairs = _merge_highlight_boxes(hl_boxes, hl_windows)
+            hl_w, hl_h = int(highlight["w"]), int(highlight["h"])
+            hl_idx = text_idx + 1
+            inputs.extend(["-i", hl_png])
+            parts = []
+            src = "txtv"
+            for i, (box, (t0, t1)) in enumerate(pairs):
+                out_lbl = f"hl{i}"
+                cx = int(box["x"] + (box["w"] - hl_w) / 2)
+                cy = int(box["y"] + (box["h"] - hl_h) / 2)
+                parts.append(
+                    f"[{src}][{hl_idx}:v]overlay=x={cx}:y={cy}:"
+                    f"enable='between(t,{t0:.2f},{t1:.2f})'[{out_lbl}]"
+                )
+                src = out_lbl
+            if parts:
+                hl_chain = ";" + ";".join(parts)
+                hl_final = src
+
     # Outro fade — applied to the final composite so the segment eases
     # out before the next one takes over.  Skipped on the very last
     # segment to avoid a fade-to-black at the very end of the video.
@@ -641,6 +716,9 @@ def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_las
             # composite so text and video leave together.
             filt += f";[{last_v}][{text_idx}:v]overlay=0:0[txtv]"
             last_v = "txtv"
+            if hl_chain:
+                filt += hl_chain
+                last_v = hl_final
         if outro_fade_filter:
             filt = filt + ";" + f"[{last_v}]{outro_fade_filter}"
             last_v = "v"
@@ -662,6 +740,9 @@ def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_las
         if text_idx is not None:
             filt += f";[{last_v}][{text_idx}:v]overlay=0:0[txtv]"
             last_v = "txtv"
+            if hl_chain:
+                filt += hl_chain
+                last_v = hl_final
         if outro_fade_filter:
             filt = filt + ";" + f"[{last_v}]{outro_fade_filter}"
             last_v = "v"
@@ -726,7 +807,7 @@ def process_single_ayah_ffmpeg(args):
     ("ThreadPool race conditions").
     """
     (job, reciter_id, surah, ayah, idx, template, bg_style, quality,
-     reciter_speed, is_last, show_text) = args
+     reciter_speed, is_last, show_text, highlight_words) = args
 
     # Bind the parent build's JobContext to this worker thread so any
     # nested call to ``current_job()`` (e.g. inside ``download_audio``)
@@ -767,6 +848,8 @@ def process_single_ayah_ffmpeg(args):
         # transparent full-frame PNG.  Fetch failure = loud job failure
         # (Constitution II / FR-010) — never a silent textless success.
         text_png_path = None
+        highlight = None
+        use_highlight = bool(show_text and highlight_words)
         if show_text:
             add_log(f"text: fetching ({surah}:{ayah})")
             try:
@@ -781,9 +864,27 @@ def process_single_ayah_ffmpeg(args):
                 current_job().text_png_path(idx),
                 template=template,
                 duration_sec=duration,
+                with_highlight=use_highlight,
+                highlight_path=current_job().highlight_png(idx),
             )
             text_png_path = meta["png"]
             add_log(f"text: rendered ({surah}:{ayah})")
+            if use_highlight:
+                if meta.get("windows") and meta.get("highlight"):
+                    highlight = {
+                        "png": meta["highlight"]["png"],
+                        "w": meta["highlight"]["w"],
+                        "h": meta["highlight"]["h"],
+                        "words": meta["words"],
+                        "windows": meta["windows"],
+                    }
+                    add_log(f"highlight: on ({surah}:{ayah}, "
+                            f"{len(meta['words'])} words)")
+                else:
+                    # No audio duration → no reliable word timings:
+                    # graceful plain-display fallback (FR-011).
+                    add_log(f"highlight: unavailable, plain display "
+                            f"({surah}:{ayah})")
         else:
             add_log(f"text: skipped ({surah}:{ayah})")
 
@@ -794,7 +895,7 @@ def process_single_ayah_ffmpeg(args):
 
         segment_out = current_job().segment_path(idx)
         ayah_num = f"{surah}:{ayah}"
-        build_segment_ffmpeg(bg_paths, audio_path, duration, segment_out, is_last=is_last, ayah_num=ayah_num, surah_name=SURAH_NAMES[surah-1], text_png_path=text_png_path)
+        build_segment_ffmpeg(bg_paths, audio_path, duration, segment_out, is_last=is_last, ayah_num=ayah_num, surah_name=SURAH_NAMES[surah-1], text_png_path=text_png_path, highlight=highlight)
 
         logging.info(f"✅ Segment {idx} complete: ayah {surah}:{ayah}")
         return (ayah, segment_out)
@@ -876,7 +977,8 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
                 person_name='', target_duration_seconds=None,
                 include_bismillah=False, reciter_speed=1.0,
                 transition_style_override=None,
-                show_text=SHOW_TEXT_DEFAULT):
+                show_text=SHOW_TEXT_DEFAULT,
+                highlight_words=HIGHLIGHT_WORDS_DEFAULT):
     """Main video builder.
 
     Downloads each ayah's recitation, muxes it onto a background video
@@ -1010,7 +1112,7 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
         job = current_job()
         ayah_args = [
             (job, reciter_id, surah, ayah, idx, template, bg_style, quality,
-             reciter_speed, idx == total_ayahs, show_text)
+             reciter_speed, idx == total_ayahs, show_text, highlight_words)
             for idx, ayah in enumerate(range(start_ayah, last_ayah + 1), start=1)
         ]
 
@@ -1754,6 +1856,8 @@ def generate_video():
         reciter_speed = 1.0
     transition_style_override = data.get('transitionStyle') or None
     show_text = bool(data.get('showText', data.get('show_text', SHOW_TEXT_DEFAULT)))
+    highlight_words = bool(data.get(
+        'highlightWords', data.get('highlight_words', HIGHLIGHT_WORDS_DEFAULT)))
 
     reset_progress()
     current_progress.set(is_running=True, is_complete=False, error=None)
@@ -1763,7 +1867,7 @@ def generate_video():
         args=(reciter_id, surah, start_ayah, end_ayah, quality,
               format_type, template, person_name, target_duration_seconds,
               include_bismillah, reciter_speed, transition_style_override,
-              show_text),
+              show_text, highlight_words),
         daemon=True
     )
     thread.start()
@@ -1786,13 +1890,15 @@ def preview_video():
     ayah = int(data.get('ayah', data.get('startAyah', 1)))
     template = data.get('template', 'normal')
     show_text = bool(data.get('showText', data.get('show_text', SHOW_TEXT_DEFAULT)))
+    highlight_words = bool(data.get(
+        'highlightWords', data.get('highlight_words', HIGHLIGHT_WORDS_DEFAULT)))
 
     reset_progress()
     current_progress.set(is_running=True, is_complete=False, error=None)
     thread = threading.Thread(
         target=build_video,
         args=(reciter_id, surah, ayah, ayah, 'low', 'reels', template, '', None,
-              False, 1.0, None, show_text),
+              False, 1.0, None, show_text, highlight_words),
         daemon=True
     )
     thread.start()
