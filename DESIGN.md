@@ -130,6 +130,17 @@ Emerald acts and gold glows; rarity is the point of both.
 **The Two Lights Rule.** Emerald moves things forward; gold marks what matters.
 No element wears both jobs, and neither appears where it has no role.
 
+### Token Source
+One source: Tailwind `@theme` tokens in `UI.html` (`paper, card, ink, action,
+mint, gold, honey, term, foam, sand, golddeep`). `style.css` holds no color
+of its own — every value reads `var(--color-*)`, except data-URI literals
+(select chevron, dot pattern) which are commented with the token they match.
+
+### Focus System
+One indicator: the emerald `focus-visible` ring. Native states stay inside the
+system too — checked dropdown options get emerald with white text, autofill
+keeps paper fill and ink text, and the video keeps a scoped gold outline.
+
 ### Light Theme
 Warm paper is the default and only theme: paper canvas (#f4f1e8),
 ink text (#1d2b23), deepened action emerald (#0c6e47) and honey gold (#8a5f16)
