@@ -49,6 +49,8 @@ TEXT_MIN_CONTRAST = 4.5            # WCAG-ish contrast floor vs backdrop
 # Feature defaults (request fields may override per call).
 SHOW_TEXT_DEFAULT = True
 HIGHLIGHT_WORDS_DEFAULT = False    # experimental word-level highlighting
+TEXT_POSITION_DEFAULT = "lower"    # ayah-text block anchor: "lower" | "middle"
+TEXT_POSITIONS = ("lower", "middle")
 
 # Per-template styling profiles (keys match TEMPLATES below).
 # 'accent' drives the glyph color; backing opacity varies slightly so each

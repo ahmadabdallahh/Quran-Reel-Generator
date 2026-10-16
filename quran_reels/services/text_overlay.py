@@ -259,8 +259,13 @@ def render_ayah_text_png(text: str, out_path: str, template: str = "normal",
                          frame_w: int = 1080, frame_h: int = 1920,
                          duration_sec: float | None = None,
                          with_highlight: bool = False,
-                         highlight_path: str | None = None) -> dict:
+                         highlight_path: str | None = None,
+                         position: str = "lower") -> dict:
     """Render ``text`` (verbatim!) to a transparent full-frame PNG.
+
+    ``position`` anchors the text block vertically: ``"lower"`` (default,
+    lower-center above the safe-area margin) or ``"middle"`` (vertically
+    centered on the frame).  Unknown values fall back to ``"lower"``.
 
     Returns metadata::
 
@@ -285,8 +290,15 @@ def render_ayah_text_png(text: str, out_path: str, template: str = "normal",
 
     block_w = max(widths)
     block_h = len(lines) * line_h
-    bottom = frame_h * (1.0 - TEXT_ZONE_BOTTOM_MARGIN_FRAC)
-    top = bottom - block_h
+    pos = (position or "lower").strip().lower()
+    if pos not in ("lower", "middle"):
+        pos = "lower"
+    if pos == "middle":
+        top = (frame_h - block_h) / 2.0
+    else:
+        bottom = frame_h * (1.0 - TEXT_ZONE_BOTTOM_MARGIN_FRAC)
+        top = bottom - block_h
+    bottom = top + block_h
     left = (frame_w - block_w) / 2.0
 
     canvas = Image.new("RGBA", (frame_w, frame_h), (0, 0, 0, 0))

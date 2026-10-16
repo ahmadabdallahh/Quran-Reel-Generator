@@ -95,6 +95,8 @@ from quran_reels.config import (
     BISMILLAH_SKIP_SURAHS,
     SHOW_TEXT_DEFAULT,
     HIGHLIGHT_WORDS_DEFAULT,
+    TEXT_POSITION_DEFAULT,
+    TEXT_POSITIONS,
 )
 from quran_reels.services.text_overlay import render_ayah_text_png, resolve_profile
 from quran_reels.services.background import (
@@ -807,7 +809,8 @@ def process_single_ayah_ffmpeg(args):
     ("ThreadPool race conditions").
     """
     (job, reciter_id, surah, ayah, idx, template, bg_style, quality,
-     reciter_speed, is_last, show_text, highlight_words) = args
+     reciter_speed, is_last, show_text, highlight_words,
+     text_position) = args
 
     # Bind the parent build's JobContext to this worker thread so any
     # nested call to ``current_job()`` (e.g. inside ``download_audio``)
@@ -866,6 +869,7 @@ def process_single_ayah_ffmpeg(args):
                 duration_sec=duration,
                 with_highlight=use_highlight,
                 highlight_path=current_job().highlight_png(idx),
+                position=text_position,
             )
             text_png_path = meta["png"]
             add_log(f"text: rendered ({surah}:{ayah})")
@@ -978,7 +982,8 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
                 include_bismillah=False, reciter_speed=1.0,
                 transition_style_override=None,
                 show_text=SHOW_TEXT_DEFAULT,
-                highlight_words=HIGHLIGHT_WORDS_DEFAULT):
+                highlight_words=HIGHLIGHT_WORDS_DEFAULT,
+                text_position=TEXT_POSITION_DEFAULT):
     """Main video builder.
 
     Downloads each ayah's recitation, muxes it onto a background video
@@ -1109,10 +1114,15 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
         # thread-local storage) cannot race on a global job_id.  See
         # ``bug.md`` Issue 2 P0 #5.
         total_ayahs = last_ayah - start_ayah + 1
+        # Feature 002 text position: normalize once per job; workers reuse
+        # the same anchor so every segment agrees.
+        if text_position not in TEXT_POSITIONS:
+            text_position = TEXT_POSITION_DEFAULT
         job = current_job()
         ayah_args = [
             (job, reciter_id, surah, ayah, idx, template, bg_style, quality,
-             reciter_speed, idx == total_ayahs, show_text, highlight_words)
+             reciter_speed, idx == total_ayahs, show_text, highlight_words,
+             text_position)
             for idx, ayah in enumerate(range(start_ayah, last_ayah + 1), start=1)
         ]
 
@@ -1858,6 +1868,11 @@ def generate_video():
     show_text = bool(data.get('showText', data.get('show_text', SHOW_TEXT_DEFAULT)))
     highlight_words = bool(data.get(
         'highlightWords', data.get('highlight_words', HIGHLIGHT_WORDS_DEFAULT)))
+    text_position = str(data.get(
+        'textPosition', data.get('text_position', TEXT_POSITION_DEFAULT))
+        or TEXT_POSITION_DEFAULT).lower()
+    if text_position not in TEXT_POSITIONS:
+        text_position = TEXT_POSITION_DEFAULT
 
     reset_progress()
     current_progress.set(is_running=True, is_complete=False, error=None)
@@ -1867,7 +1882,7 @@ def generate_video():
         args=(reciter_id, surah, start_ayah, end_ayah, quality,
               format_type, template, person_name, target_duration_seconds,
               include_bismillah, reciter_speed, transition_style_override,
-              show_text, highlight_words),
+              show_text, highlight_words, text_position),
         daemon=True
     )
     thread.start()
@@ -1892,13 +1907,18 @@ def preview_video():
     show_text = bool(data.get('showText', data.get('show_text', SHOW_TEXT_DEFAULT)))
     highlight_words = bool(data.get(
         'highlightWords', data.get('highlight_words', HIGHLIGHT_WORDS_DEFAULT)))
+    text_position = str(data.get(
+        'textPosition', data.get('text_position', TEXT_POSITION_DEFAULT))
+        or TEXT_POSITION_DEFAULT).lower()
+    if text_position not in TEXT_POSITIONS:
+        text_position = TEXT_POSITION_DEFAULT
 
     reset_progress()
     current_progress.set(is_running=True, is_complete=False, error=None)
     thread = threading.Thread(
         target=build_video,
         args=(reciter_id, surah, ayah, ayah, 'low', 'reels', template, '', None,
-              False, 1.0, None, show_text, highlight_words),
+              False, 1.0, None, show_text, highlight_words, text_position),
         daemon=True
     )
     thread.start()

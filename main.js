@@ -240,6 +240,8 @@ async function pollProgress() {
             progressInterval = null;
             generateBtn.disabled = false;
             generateBtn.innerHTML = '<span>إنشاء الفيديو</span>';
+            previewBtn.disabled = false;
+            previewBtn.innerHTML = previewBtnDefaultLabel;
         }
     } catch (e) {
         console.error('Polling error:', e);
@@ -266,18 +268,18 @@ function updateUI(data) {
         // Video filename is the last part of path
         const filename = data.output_path.split(/[\\\/]/).pop();
         const videoUrl = `${API_BASE}/outputs/video/${filename}`;
-        
+
         // Set video source and show preview/download immediately
-        if (previewVideo.src !== videoUrl) {
+        if (!previewVideo.src || !previewVideo.src.endsWith(filename)) {
             previewVideo.src = videoUrl;
             previewVideo.load();
         }
-        
+
         // Always show video preview and download link when video is generated
         if (!videoPreviewWrapper.classList.contains('active')) {
             videoPreviewWrapper.classList.add('active');
         }
-        
+
         // Update download link - ensure it's always visible
         const downloadLink = document.getElementById('downloadLink');
         if (downloadLink) {
@@ -285,8 +287,19 @@ function updateUI(data) {
             downloadLink.textContent = 'تحميل الفيديو';
             downloadLink.style.display = 'inline-block';
         }
-        
+
+        // Bring the player into view and start playback (muted autoplay
+        // policies may block it — the user can press play instead).
+        videoPreviewWrapper.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        previewVideo.play().catch(() => {});
+        updatePlayPauseIcon();
+
         addLog(`\u2705 الفيديو جاهز! فيديو URL: ${videoUrl}`);
+    }
+
+    if (data.error) {
+        previewBtn.disabled = false;
+        previewBtn.innerHTML = previewBtnDefaultLabel;
     }
 }
 
@@ -307,6 +320,7 @@ generateBtn.addEventListener('click', async (e) => {
         includeBismillah: document.getElementById('bismillahCheckbox').checked,
         showText: document.getElementById('showTextCheckbox').checked,
         highlightWords: document.getElementById('highlightWordsCheckbox').checked,
+        textPosition: document.getElementById('textPositionSelect').value,
         targetDurationSeconds: (() => {
             const v = document.getElementById('targetDurationInput').value;
             const n = parseInt(v, 10);
@@ -355,8 +369,13 @@ previewBtn.addEventListener('click', async () => {
         ayah: parseInt(startAyahInput.value),
         template: templateSelect.value,
         showText: document.getElementById('showTextCheckbox').checked,
-        highlightWords: document.getElementById('highlightWordsCheckbox').checked
+        highlightWords: document.getElementById('highlightWordsCheckbox').checked,
+        textPosition: document.getElementById('textPositionSelect').value
     };
+
+    previewBtn.disabled = true;
+    const originalPreviewLabel = previewBtn.innerHTML;
+    previewBtn.innerHTML = '<span>جاري إنشاء المعاينة...</span>';
 
     try {
         displayedLogs = 0;
@@ -369,11 +388,22 @@ previewBtn.addEventListener('click', async () => {
             body: JSON.stringify(payload)
         });
 
-        if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && (data.success !== false)) {
+            if (!progressInterval) {
+                progressInterval = setInterval(pollProgress, 1000);
+            }
             pollProgress();
+        } else {
+            alert(data.error || 'تعذر إنشاء المعاينة — تحقق من الاتصال وحاول مجدداً');
+            previewBtn.disabled = false;
+            previewBtn.innerHTML = originalPreviewLabel;
         }
     } catch (e) {
         console.error('Preview error:', e);
+        alert('فشل الاتصال بالخادم: ' + e.message);
+        previewBtn.disabled = false;
+        previewBtn.innerHTML = originalPreviewLabel;
     }
 });
 
@@ -381,10 +411,12 @@ previewBtn.addEventListener('click', async () => {
 // disabled (and cleared) whenever "show text" is off.
 const showTextCheckbox = document.getElementById('showTextCheckbox');
 const highlightWordsCheckbox = document.getElementById('highlightWordsCheckbox');
+const textPositionSelect = document.getElementById('textPositionSelect');
 
 function syncHighlightToggle() {
     const enabled = showTextCheckbox.checked;
     highlightWordsCheckbox.disabled = !enabled;
+    textPositionSelect.disabled = !enabled;
     if (!enabled) {
         highlightWordsCheckbox.checked = false;
     }
@@ -392,3 +424,54 @@ function syncHighlightToggle() {
 
 showTextCheckbox.addEventListener('change', syncHighlightToggle);
 syncHighlightToggle();
+
+// --- Video player controls (dependency-free player toolbar) ---
+const previewBtnDefaultLabel = previewBtn.innerHTML;
+const playPauseBtn = document.getElementById('playPauseBtn');
+const speedSelect = document.getElementById('speedSelect');
+const fullscreenBtn = document.getElementById('fullscreenBtn');
+const timeLabel = document.getElementById('timeLabel');
+
+function fmtTime(s) {
+    if (!Number.isFinite(s) || s < 0) s = 0;
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+function updatePlayPauseIcon() {
+    playPauseBtn.textContent = previewVideo.paused ? '▶' : '⏸';
+}
+
+function updateTimeLabel() {
+    timeLabel.textContent = `${fmtTime(previewVideo.currentTime)} / ${fmtTime(previewVideo.duration)}`;
+}
+
+playPauseBtn.addEventListener('click', () => {
+    if (!previewVideo.src) return;
+    if (previewVideo.paused) {
+        previewVideo.play().catch(() => {});
+    } else {
+        previewVideo.pause();
+    }
+});
+
+speedSelect.addEventListener('change', () => {
+    previewVideo.playbackRate = parseFloat(speedSelect.value) || 1.0;
+});
+
+fullscreenBtn.addEventListener('click', () => {
+    const frame = document.querySelector('.player-frame');
+    if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+    } else if (frame && frame.requestFullscreen) {
+        frame.requestFullscreen().catch(() => {});
+    } else if (previewVideo.webkitEnterFullscreen) {
+        previewVideo.webkitEnterFullscreen();
+    }
+});
+
+previewVideo.addEventListener('play', updatePlayPauseIcon);
+previewVideo.addEventListener('pause', updatePlayPauseIcon);
+previewVideo.addEventListener('timeupdate', updateTimeLabel);
+previewVideo.addEventListener('loadedmetadata', updateTimeLabel);
