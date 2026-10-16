@@ -668,11 +668,11 @@ def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_las
         text_idx = n + 1
         inputs.extend(["-i", text_png_path])
 
-    # Word-level read-along highlight (feature 002 US3): build ONE chain
-    # of overlay nodes driven by a single reusable glow-sprite input.
-    # Composited ABOVE the text so the active word is spotlit, and
-    # BEFORE the outro fade so the whole composite still eases out
-    # together.  Any inconsistency in meta → plain display (FR-011).
+    # Word-level read-along highlight (feature 002 US3): the glow sprite
+    # is split into one branch per word; each branch fades in/out around
+    # its own timing window (smooth spotlight, no hard pops), then all
+    # branches composite ABOVE the text and BEFORE the outro fade.
+    # Any inconsistency in meta → plain display (FR-011).
     hl_chain = ""
     hl_final = None
     if text_idx is not None and highlight:
@@ -684,20 +684,42 @@ def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_las
             pairs = _merge_highlight_boxes(hl_boxes, hl_windows)
             hl_w, hl_h = int(highlight["w"]), int(highlight["h"])
             hl_idx = text_idx + 1
-            inputs.extend(["-i", hl_png])
+            # -loop 1: the sprite must be a real timed stream, not a
+            # single held frame — time-based fade st/d never advances on
+            # a one-frame input (overlay's repeatlast would freeze the
+            # fade's initial transparent frame forever).
+            inputs.extend(["-loop", "1", "-framerate", "30", "-i", hl_png])
+            n_words = len(pairs)
+            fades = []
+            if n_words == 1:
+                fades.append(f"[{hl_idx}:v]format=rgba[hs0]")
+            else:
+                outs = "".join(f"[hs{i}]" for i in range(n_words))
+                fades.append(f"[{hl_idx}:v]split={n_words}{outs}")
             parts = []
             src = "txtv"
             for i, (box, (t0, t1)) in enumerate(pairs):
+                span = max(0.0, t1 - t0)
+                fade_d = min(0.15, span * 0.25)
+                if fade_d >= 0.03:
+                    fades.append(
+                        f"[hs{i}]format=rgba,"
+                        f"fade=t=in:st={t0:.2f}:d={fade_d:.2f}:alpha=1,"
+                        f"fade=t=out:st={t1 - fade_d:.2f}:d={fade_d:.2f}:alpha=1"
+                        f"[hf{i}]"
+                    )
+                else:
+                    fades.append(f"[hs{i}]format=rgba[hf{i}]")
                 out_lbl = f"hl{i}"
                 cx = int(box["x"] + (box["w"] - hl_w) / 2)
                 cy = int(box["y"] + (box["h"] - hl_h) / 2)
                 parts.append(
-                    f"[{src}][{hl_idx}:v]overlay=x={cx}:y={cy}:"
+                    f"[{src}][hf{i}]overlay=x={cx}:y={cy}:"
                     f"enable='between(t,{t0:.2f},{t1:.2f})'[{out_lbl}]"
                 )
                 src = out_lbl
             if parts:
-                hl_chain = ";" + ";".join(parts)
+                hl_chain = ";" + ";".join(fades + parts)
                 hl_final = src
 
     # Outro fade — applied to the final composite so the segment eases
