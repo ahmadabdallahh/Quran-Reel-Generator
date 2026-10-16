@@ -140,7 +140,7 @@ body::before {
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-foam) 45%, transparent), transparent);
     animation: progressShimmer 1.5s linear infinite;
 }
 
@@ -258,7 +258,7 @@ body::before {
 /* Native dropdown selection + autofill, kept inside the token system */
 select option:checked {
     background: var(--color-action);
-    color: #ffffff;
+    color: var(--color-foam);
 }
 
 input:-webkit-autofill {
