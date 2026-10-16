@@ -1,13 +1,3 @@
----
-title: Quran Reels Generator
-emoji: 📖
-colorFrom: green
-colorTo: blue
-sdk: docker
-pinned: false
-app_port: 7860
----
-
 # 📖 Quran Reels Generator | أداة عمل ريلز القرآن الكريم
 
 <p align="center">
@@ -25,11 +15,17 @@ app_port: 7860
 
 ## 🌍 English
 
-An automated AI-powered tool to create professional Quranic Reels/Shorts video content. It synchronizes Quranic recitation audio with beautiful animated background videos—perfect for Instagram Reels, TikTok, and YouTube Shorts. The app now focuses purely on producing high-quality audio + background video without Arabic text overlays.
+An automated AI-powered tool to create professional Quranic Reels/Shorts video content. It synchronizes Quranic recitation audio with beautiful animated background videos — perfect for Instagram Reels, TikTok, and YouTube Shorts — with the recited ayah's exact Uthmani text rendered on each segment.
 
-**Key change**: The text-on-video rendering feature (Arabic text overlay, fonts, text animations) has been **removed**. The app now produces audio + background video only. Future enhancements include adding ayah number watermarks, text overlays, and improved audio transitions.
+### ✨ Key Features
 
-For the latest feature roadmap, see [`future-steps.md`](future-steps.md).
+#### 📖 Ayah Text Sync (spec `specs/002-ayah-text-sync/`)
+- **Read-along display**: every segment shows the complete text of the ayah being recited, entering/exiting exactly at segment boundaries; `show_text` toggle (default on) reproduces the textless pipeline when off
+- **Correct Arabic shaping**: Pillow + RAQM rendering (connected letterforms, tashkeel) in the bundled Quranic font `assets/fonts/ScheherazadeNew-Regular.ttf`, with system-font fallback chain
+- **Always legible**: measured auto-fit wrap (never clipped, legibility floor kept), semi-transparent backing box with automatic ≥4.5:1 contrast guard, per-template accent profiles (`ramadan`, `normal`, `masjid`, `islamic`)
+- **Text position**: lower-center or vertically-centered block (`text_position: lower | middle`, default `lower`)
+- **Loud failures**: a text-fetch failure aborts the job with a clear error — never a silent textless "success"
+- **Word highlighting** (experimental, default off): karaoke-style gold spotlight advancing word-by-word with proportional timing, capped at 60 overlay layers for long ayahs, clean fallback to plain display when timings are unavailable
 
 ### ✨ Key Features
 
@@ -63,10 +59,12 @@ For the latest feature roadmap, see [`future-steps.md`](future-steps.md).
 #### ⚙️ Advanced Settings
 - **Ayah Selection**: Smart validation prevents invalid selections
 - **Quality Levels**: Low (fast), Medium, High (slow/best quality)
-- **Progress Tracking**: Real-time logs and percentage completion
+- **Progress Tracking**: Real-time logs and percentage completion via `GET /api/progress`
+- **Preview**: `POST /api/preview` renders a single ayah at low quality; the built-in player offers play/pause, 0.5–2× speed, fullscreen, and a time label
 - **Modern UI**: Glassmorphism design with premium aesthetics and dark theme
 - **Background Selection**: Intelligently adapted to audio dynamics
 - **Crossfade Transitions**: Smooth segment-to-segment transitions
+- **Request fields**: `show_text` (default `true`), `highlight_words` (default `false`), `text_position` (`lower`|`middle`, default `lower`) — `camelCase` aliases accepted; see `specs/002-ayah-text-sync/contracts/generate-api.md`
 
 ### 🚀 Quick Start
 
@@ -117,48 +115,62 @@ python main.py
    - Choose quality and template
    - Optionally add your name
    - Use the Bismillah checkbox to start with a title card (silent)
+   - Keep "Show ayah text" checked (or pick text position: bottom / middle)
+   - Optionally enable experimental word highlighting
    - Set maximum duration (optional)
    - Set recitation speed (0.5× slower to 2.0× faster)
    - Choose transition style between ayahs
-   - Click "Generate Video"
+   - Click "Preview" for a fast single-ayah check, or "Generate Video"
 
 ### 📁 Project Structure
 
 ```
 Quran-Reels-Generator/
-├── main.py              # Backend server & video processing engine
+├── main.py              # Flask routes + video build pipeline (build_video, segments)
 ├── UI.html              # Web interface (single-page application)
-├── main.js              # Frontend logic and API calls
+├── main.js              # Frontend logic, API calls, preview player
+├── style.css            # Glassmorphism theme + player styles
 ├── requirements.txt     # Python dependencies
-├── skills.md            # Technical documentation and API reference
-├── LICENSE              # Apache 2.0 License
-├── fonts/               # Arabic font files (.ttf, .otf)
-│   └── _cache/          # Font cache for compatibility
+├── AGENTS.md            # Contributor notes (commands, traps, architecture)
+├── quran_reels/         # Backend package (leaf modules, no import of main)
+│   ├── config.py        # Templates, presets, reciters, text-render constants
+│   └── services/
+│       ├── audio.py     # Recitation download, ayah text fetch (api.alquran.cloud)
+│       ├── background.py# Background rotator + cache (lazy imports of main)
+│       └── text_overlay.py # RAQM ayah renderer, word boxes/timings, highlight sprite
+├── assets/fonts/        # Bundled Quranic font (Scheherazade New, OFL)
+├── specs/               # Feature specs + API contracts (see 002-ayah-text-sync/)
+├── .archify/            # System architecture diagram (HTML)
 ├── vision/              # Background video library
 │   ├── nature/          # Nature scenery videos
 │   ├── islamic/         # Islamic art/pattern videos
 │   ├── masjid/          # Mosque/prayer videos
 │   └── night/           # Night/evening ambience videos
 ├── outputs/             # Generated content
-│   ├── video/           # Final rendered videos
-│   └── bg_cache/        # Pre-processed background cache
-├── temp/                # Temporary working files (auto-cleanup)
-└── bin/                 # Binary executables
-    └── ffmpeg/          # FFmpeg and FFprobe
+│   └── video/           # Final rendered videos
+├── cache/               # Audio + preprocessed background cache
+└── temp/                # Temporary working files (auto-cleanup)
 ```
 
 ### 🔧 Configuration
 
 #### Templates
-Edit `TEMPLATES` in `main.py`:
+Edit `TEMPLATES` in `quran_reels/config.py` (background style + transition; text styling lives in `TEXT_STYLE_PROFILES`):
 
 ```python
 TEMPLATES = {
-    'ramadan': {'bg_style': 'night', 'text_color': 'gold', 'font_size_mult': 1.2},
-    'normal':  {'bg_style': 'nature', 'text_color': 'white', 'font_size_mult': 1.0},
-    'masjid':  {'bg_style': 'masjid', 'text_color': 'white', 'font_size_mult': 1.1},
-    'islamic': {'bg_style': 'islamic', 'text_color': 'white', 'font_size_mult': 1.1}
+    'ramadan': {'bg_style': 'night', 'transition': 'fade', 'transition_style': 'cinematic'},
+    'normal':  {'bg_style': 'nature', 'transition': 'fade', 'transition_style': 'cinematic'},
+    'masjid':  {'bg_style': 'masjid', 'transition': 'fade', 'transition_style': 'cinematic'},
+    'islamic': {'bg_style': 'islamic', 'transition': 'wipe', 'transition_style': 'cinematic'},
 }
+
+TEXT_STYLE_PROFILES = {
+    'ramadan': {'accent': '#FFD98A', 'backing_opacity': 0.62},
+    'normal':  {'accent': '#FFFFFF', 'backing_opacity': 0.58},
+    ...
+}
+TEXT_POSITIONS = ("lower", "middle")  # TEXT_POSITION_DEFAULT = "lower"
 ```
 
 #### Quality Presets
@@ -170,14 +182,12 @@ QUALITY_PRESETS = {
 }
 ```
 
-#### Animations & Transitions
+#### Transitions
+Segment transitions come from `VIDEO_TRANSITIONS` in `quran_reels/config.py`
+(`fade`, `dissolve`, `wipe`, `slide`, `cross_zoom`, `pixelate`); the UI's
+transition-style select (`cinematic`, `dynamic`, `smooth`, `cut`) controls how
+they are applied between ayahs.
 ```python
-TEXT_ANIMATIONS = {
-    'fade_in': {'type': 'fade', 'duration': 0.5},
-    'slide_up': {'type': 'slide', 'duration': 0.5, 'direction': 'up'},
-    'typewriter': {'type': 'typewriter', 'duration': 0.03},
-}
-
 VIDEO_TRANSITIONS = {
     'fade': {'type': 'fade', 'duration': 0.5},
     'dissolve': {'type': 'dissolve', 'duration': 0.5},
@@ -188,8 +198,8 @@ VIDEO_TRANSITIONS = {
 
 | Issue | Solution |
 |-------|----------|
-| FFmpeg not found | Ensure `bin/ffmpeg/ffmpeg.exe` exists or add FFmpeg to system PATH |
-| Arabic text not showing | Verify the font has Arabic coverage (run `python -c "import freetype; print(freetype.Face('fonts/YOUR.ttf').num_glyphs)"`); all 20 shipped fonts work via the HarfBuzz pipeline |
+| FFmpeg not found | Ensure `ffmpeg`/`ffprobe` are on PATH (`QURAN_FFMPEG_EXE` in `.env.example` is not wired — see AGENTS.md) |
+| Arabic text not showing | Confirm RAQM support: `python -c "from PIL import features; print(features.check('raqm'))"` must print `True`; bundled font is `assets/fonts/ScheherazadeNew-Regular.ttf` |
 | Audio download fails | Check internet connection; verify reciter ID exists at everyayah.com |
 | Video generation slow | Use 'low' quality; process fewer ayahs; close other applications |
 | Out of memory errors | Reduce quality; process in smaller batches; increase RAM |
@@ -197,9 +207,10 @@ VIDEO_TRANSITIONS = {
 
 ### 📚 Documentation
 
-- **Technical Details**: See [skills.md](skills.md) for complete architecture
-- **API Reference**: Documented in skills.md
-- **Architecture**: Flask + FFmpeg + PIL + Arabic Reshaper
+- **Contributor notes**: See [AGENTS.md](AGENTS.md) for commands, config, and known traps
+- **Feature spec**: See [specs/002-ayah-text-sync/](specs/002-ayah-text-sync/) for the text-sync spec, tasks, and API contract
+- **System architecture**: See [Quran Reels architecture](.archify/architecture-quran-reels-20261016-151521/quran-reels-architecture.html) (interactive diagram: UI → Flask → build worker → FFmpeg, text/audio/background services)
+- **Architecture**: Flask + FFmpeg + Pillow/RAQM
 
 ### 🤝 Contributing
 
@@ -227,7 +238,16 @@ Apache 2.0 - See [LICENSE](LICENSE) file for details
 
 ## 🇪🇬 العربية
 
-أداة ذكية ومؤتمتة لإنشاء مقاطع فيديو احترافية (ريلز/قصيرة) للقرآن الكريم. تقوم بمزامنة النص القرآني بالرسم العثماني مع التلاوات العطرة فوق خلفيات متحركة خلابة—مثالية لريلز إنستغرام وتيك توك وقصص يوتيوب.
+أداة ذكية ومؤتمتة لإنشاء مقاطع فيديو احترافية (ريلز/قصيرة) للقرآن الكريم. تقوم بمزامنة التلاوات العطرة فوق خلفيات متحركة خلابة — مثالية لريلز إنستغرام وتيك توك وقصص يوتيوب — مع عرض نص الآية بالرسم العثماني أثناء تلاوتها.
+
+### ✨ المميزات الرئيسية
+
+#### 📖 مزامنة نص الآيات
+- **عرض مصاحب للتلاوة**: كل مقطع يعرض النص الكامل للآية التي تُتلى، ويظهر/يختفي عند حدود المقاطع؛ خيار `show_text` (مفعّل افتراضياً)
+- **تشكيل عربي صحيح**: عرض عبر Pillow + RAQM بالخط القرآني المرفق `assets/fonts/ScheherazadeNew-Regular.ttf`
+- **وضوح دائم**: التفاف تلقائي محسوب، صندوق خلفية شفاف بتباين ≥4.5:1، وألوان مميزة لكل قالب
+- **موضع النص**: أسفل الفيديو أو وسطه (`text_position`)
+- **تظليل الكلمات** (تجريبي): إضاءة ذهبية تتنقل كلمةً كلمة مع التلاوة، وتعود للعرض العادي عند غياب التوقيتات
 
 ### ✨ المميزات الرئيسية
 
@@ -253,12 +273,10 @@ Apache 2.0 - See [LICENSE](LICENSE) file for details
 - الشيخ مصطفى إسماعيل
 
 #### 🎨 التصميم والتخصيص
-- **خطوط ديناميكية**: اكتشاف تلقائي لجميع الخطوط في مجلد `fonts/` مع تخزين مؤقت. **جميع الخطوط العربية تُعرض بشكل صحيح** عبر مسار HarfBuzz + FreeType (ربط الحروف، التشكيل، الكشيدة، التموضع GPOS). يأتي المشروع مع 20 خطاً: Almadinah و Amiri و DigitalKhatt و DigitalMadina و Dubai و Elgharib و Lateef و Letellka و RanaKufi و Tajawal و Uthman و Zain.
-- **خلفيات منظمة**: مصنفة حسب النمط (طبيعة، إسلامي، مساجد، ليل)
-- **قوالب جاهزة**: 4 أنماط احترافية (رمضان، افتراضي، مساجد، إسلامي)
-- **عرض عربي**: دعم التشكيل والكتابة من اليمين لليسار
+- **خلفيات منظمة**: مصنفة حسب النمط (طبيعة، إسلامي، مساجد، ليل) مع تدوير ذكي يمنع التكرار
+- **قوالب جاهزة**: 4 أنماط احترافية (رمضان، افتراضي، مساجد، إسلامي) تتحكم بالخلفية والانتقالات وألوان النص
 - **بحث سريع**: مربع بحث للعثور على السورة بسرعة
-- **لون نص ديناميكي**: يتكيف تلقائياً مع سطوع الخلفية
+- **مشغّل معاينة**: تشغيل/إيقاف، سرعة 0.5–2×، ملء الشاشة، ومؤشر الوقت
 
 #### ⚙️ إعدادات متقدمة
 - **اختيار الآيات**: تحقق ذكي يمنع الاختيارات غير الصالحة
@@ -306,16 +324,16 @@ python main.py
 #### طريقة الاستخدام
 
 1. **إضافة خلفيات**: ضع ملفات .mp4 في مجلدات `vision/` (nature، islamic، masjid، night)
-2. **إضافة خطوط** (اختياري): ضع ملفات .ttf/.otf عربية في مجلد `fonts/`
-3. **تشغيل الخادم**: نفذ `python main.py` وانتظر التهيئة
-4. **فتح الواجهة**: زر `http://localhost:5000` في المتصفح
-5. **إنشاء فيديو**:
+2. **تشغيل الخادم**: نفذ `python main.py` وانتظر التهيئة
+3. **فتح الواجهة**: زر `http://localhost:5000` في المتصفح
+4. **إنشاء فيديو**:
    - اختر القارئ من القائمة
    - ابحث واختر السورة (استخدم مربع البحث)
    - حدد أرقام آيات البداية والنهاية
    - اختر الجودة والقالب
    - أضف اسمك اختيارياً
-   - اضغط "إنشاء الفيديو"
+   - فعّل البسملة وخيار إظهار النص (واختر موضع النص)
+   - اضغط "معاينة" لفحص سريع أو "إنشاء الفيديو"
 
 ### 📁 هيكل المشروع
 
@@ -323,36 +341,36 @@ python main.py
 Quran-Reels-Generator/
 ├── main.py              # خادم الواجهة الخلفية ومحرك معالجة الفيديو
 ├── UI.html              # واجهة الويب (تطبيق صفحة واحدة)
-├── main.js              # منطق الواجهة الأمامية وطلبات API
-├── requirements.txt     # تبعيات بايثون
-├── skills.md            # التوثيق الفني ومرجع API
-├── LICENSE              # ترخيص Apache 2.0
-├── fonts/               # ملفات الخطوط العربية (.ttf, .otf)
-│   └── _cache/          # تخزين الخطوط للتوافقية
+├── main.js              # منطق الواجهة الأمامية وطلبات API ومشغّل المعاينة
+├── style.css            # التنسيقات الزجاجية وأنماط المشغّل
+├── quran_reels/         # حزمة الواجهة الخلفية (الإعدادات + الخدمات)
+│   ├── config.py        # القوالب والجودات والقراء وثوابت النص
+│   └── services/        # الصوت، الخلفيات، عرض النص العربي
+├── assets/fonts/        # الخط القرآني المرفق (Scheherazade New)
+├── specs/               # مواصفات الميزات وعقود API
+├── .archify/            # مخطط معمارية النظام (HTML تفاعلي)
 ├── vision/              # مكتبة خلفيات الفيديو
 │   ├── nature/          # فيديوهات المناظر الطبيعية
 │   ├── islamic/         # فيديوهات الفنون الإسلامية
 │   ├── masjid/          # فيديوهات المساجد والصلاة
 │   └── night/           # فيديوهات الأجواء الليلية
 ├── outputs/             # المحتوى المُنتج
-│   ├── video/           # الفيديوهات النهائية
-│   └── bg_cache/        # تخزين الخلفيات المعالجة مسبقاً
-├── temp/                # ملفات العمل المؤقتة (تنظيف تلقائي)
-└── bin/                 # الملفات التنفيذية
-    └── ffmpeg/          # FFmpeg و FFprobe
+│   └── video/           # الفيديوهات النهائية
+├── cache/               # تخزين الصوت والخلفيات
+└── temp/                # ملفات العمل المؤقتة (تنظيف تلقائي)
 ```
 
 ### 🔧 الإعدادات
 
 #### القوالب
-عدل `TEMPLATES` في `main.py`:
+عدل `TEMPLATES` في `quran_reels/config.py` (الخلفية والانتقال؛ تنسيق النص في `TEXT_STYLE_PROFILES`):
 
 ```python
 TEMPLATES = {
-    'ramadan': {'bg_style': 'night', 'text_color': 'gold', 'font_size_mult': 1.2},
-    'normal':  {'bg_style': 'nature', 'text_color': 'white', 'font_size_mult': 1.0},
-    'masjid':  {'bg_style': 'masjid', 'text_color': 'white', 'font_size_mult': 1.1},
-    'islamic': {'bg_style': 'islamic', 'text_color': 'white', 'font_size_mult': 1.1}
+    'ramadan': {'bg_style': 'night', 'transition': 'fade', 'transition_style': 'cinematic'},
+    'normal':  {'bg_style': 'nature', 'transition': 'fade', 'transition_style': 'cinematic'},
+    'masjid':  {'bg_style': 'masjid', 'transition': 'fade', 'transition_style': 'cinematic'},
+    'islamic': {'bg_style': 'islamic', 'transition': 'wipe', 'transition_style': 'cinematic'}
 }
 ```
 
@@ -366,13 +384,10 @@ QUALITY_PRESETS = {
 ```
 
 #### الحركات والانتقالات
+انتقالات المقاطع من `VIDEO_TRANSITIONS` في `quran_reels/config.py`
+(`fade`، `dissolve`، `wipe`، `slide`، `cross_zoom`، `pixelate`)؛ وقائمة أسلوب
+الانتقال في الواجهة (`cinematic`، `dynamic`، `smooth`، `cut`) تتحكم في تطبيقها.
 ```python
-TEXT_ANIMATIONS = {
-    'fade_in': {'type': 'fade', 'duration': 0.5},
-    'slide_up': {'type': 'slide', 'duration': 0.5, 'direction': 'up'},
-    'typewriter': {'type': 'typewriter', 'duration': 0.03},
-}
-
 VIDEO_TRANSITIONS = {
     'fade': {'type': 'fade', 'duration': 0.5},
     'dissolve': {'type': 'dissolve', 'duration': 0.5},
@@ -383,8 +398,8 @@ VIDEO_TRANSITIONS = {
 
 | المشكلة | الحل |
 |---------|------|
-| FFmpeg غير موجود | تأكد من وجود `bin/ffmpeg/ffmpeg.exe` أو أضف FFmpeg لـ PATH النظام |
-| النص العربي لا يظهر | تحقق أن الخط يحتوي على تغطية عربية (شغّل `python -c "import freetype; print(freetype.Face('fonts/YOUR.ttf').num_glyphs)"`)؛ جميع الخطوط العشرين تعمل عبر مسار HarfBuzz |
+| FFmpeg غير موجود | تأكد أن `ffmpeg`/`ffprobe` على PATH النظام |
+| النص العربي لا يظهر | تحقق من دعم RAQM عبر `python -c "from PIL import features; print(features.check('raqm'))"` (يجب أن يطبع `True`) |
 | فشل تحميل الصوت | تأكد من اتصال الإنترنت؛ تحقق من معرف القارئ في everyayah.com |
 | بطء إنشاء الفيديو | استخدم جودة 'منخفضة'؛ عالج آيات أقل؛ أغلق التطبيقات الأخرى |
 | أخطاء نفاد الذاكرة | قلل الجودة؛ عالج على دفعات أصغر؛ زِد الرام |
@@ -392,9 +407,10 @@ VIDEO_TRANSITIONS = {
 
 ### 📚 التوثيق
 
-- **التفاصيل الفنية**: راجع [skills.md](skills.md) للبنية الكاملة
-- **مرجع API**: موثق في skills.md
-- **البنية**: Flask + FFmpeg + PIL + Arabic Reshaper
+- **ملاحظات المساهمين**: راجع [AGENTS.md](AGENTS.md) للأوامر والإعدادات والتنبيهات
+- **مواصفة الميزة**: راجع [specs/002-ayah-text-sync/](specs/002-ayah-text-sync/) للمواصفة والمهام وعقد API
+- **معمارية النظام**: راجع [مخطط المعمارية](.archify/architecture-quran-reels-20261016-151521/quran-reels-architecture.html) (مخطط تفاعلي)
+- **البنية**: Flask + FFmpeg + Pillow/RAQM
 
 ### 🤝 المساهمة
 

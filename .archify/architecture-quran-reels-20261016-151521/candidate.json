@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Quran Reels Generator — System Architecture",
+    "locale": "en",
+    "output": ".archify/architecture-quran-reels-20261016-151521/quran-reels-architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/ahmadabdallahh/Quran-Reel-Generator.git",
+      "revision": "773a259d89145ee1c6a2564079b634689e556131"
+    }
+  },
+  "components": [
+    { "id": "users", "type": "external", "label": "User", "sublabel": "RTL Arabic browser UI", "pos": [40, 230], "size": [110, 60],
+      "sources": [{ "path": "UI.html", "line": 2, "label": "html lang ar dir rtl" }] },
+    { "id": "webui", "type": "frontend", "label": "Web UI", "sublabel": "UI.html + main.js + player", "pos": [210, 230], "size": [150, 64],
+      "sources": [{ "path": "main.js", "line": 323, "label": "generate payload" }, { "path": "main.js", "line": 385, "label": "preview fetch" }] },
+    { "id": "flask", "type": "backend", "label": "Flask App", "sublabel": "routes, serves UI + API", "pos": [445, 230], "size": [150, 64],
+      "sources": [{ "path": "main.py", "line": 1843, "label": "POST /api/generate" }, { "path": "main.py", "line": 1896, "label": "POST /api/preview" }] },
+    { "id": "builder", "type": "backend", "label": "Build Worker", "sublabel": "build_video thread + FFmpeg", "pos": [660, 230], "size": [150, 64],
+      "sources": [{ "path": "main.py", "line": 979, "label": "def build_video" }] },
+    { "id": "outputs", "type": "database", "label": "outputs/video", "sublabel": "final mp4 files", "pos": [885, 230], "size": [140, 64],
+      "sources": [{ "path": "main.py", "line": 165, "label": "VIDEO_DIR" }, { "path": "main.py", "line": 1154, "label": "final output path" }] },
+    { "id": "audio-svc", "type": "backend", "label": "Audio Service", "sublabel": "mp3 download + text fetch", "pos": [430, 410], "size": [150, 60],
+      "sources": [{ "path": "quran_reels/services/audio.py", "line": 196, "label": "download_audio" }, { "path": "quran_reels/services/audio.py", "line": 31, "label": "get_ayah_text" }] },
+    { "id": "text-svc", "type": "backend", "label": "Text Renderer", "sublabel": "RAQM PNG + highlight", "pos": [640, 410], "size": [150, 60],
+      "sources": [{ "path": "quran_reels/services/text_overlay.py", "line": 258, "label": "render_ayah_text_png" }] },
+    { "id": "bg-svc", "type": "backend", "label": "Backgrounds", "sublabel": "rotator + vision packs", "pos": [850, 410], "size": [150, 60],
+      "sources": [{ "path": "quran_reels/services/background.py", "line": 28, "label": "BackgroundRotator" }] },
+    { "id": "ext-text", "type": "external", "label": "alquran.cloud", "sublabel": "Uthmani ayah text", "pos": [375, 560], "size": [140, 56],
+      "sources": [{ "path": "quran_reels/services/audio.py", "line": 40, "label": "ayah text URL" }] },
+    { "id": "ext-audio", "type": "external", "label": "everyayah", "sublabel": "recitation mp3 mirrors", "pos": [545, 560], "size": [140, 56],
+      "sources": [{ "path": "quran_reels/services/audio.py", "line": 217, "label": "audio mirror URLs" }] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "This machine — Flask :5000", "wraps": ["flask", "builder", "outputs", "audio-svc", "text-svc", "bg-svc"] }
+  ],
+  "connections": [
+    { "id": "uses-ui", "from": "users", "to": "webui", "label": "uses" },
+    { "id": "gen-job", "from": "webui", "to": "flask", "label": "generate" },
+    { "id": "start-build", "from": "flask", "to": "builder", "label": "build job" },
+    { "id": "save-mp4", "from": "builder", "to": "outputs", "label": "save mp4" },
+    { "id": "stream-back", "from": "outputs", "to": "webui", "label": "stream mp4", "fromSide": "top", "toSide": "top", "via": [[955, 150], [285, 150]] },
+    { "id": "per-ayah-audio", "from": "builder", "to": "audio-svc", "label": "per ayah", "fromSide": "bottom", "toSide": "top" },
+    { "id": "render-text", "from": "builder", "to": "text-svc", "label": "text PNG", "fromSide": "bottom", "toSide": "top" },
+    { "id": "pick-bg", "from": "builder", "to": "bg-svc", "label": "pick bg", "fromSide": "bottom", "toSide": "top" },
+    { "id": "fetch-text", "from": "audio-svc", "to": "ext-text", "label": "fetch text", "fromSide": "bottom", "toSide": "top" },
+    { "id": "get-mp3", "from": "audio-svc", "to": "ext-audio", "label": "get mp3", "fromSide": "bottom", "toSide": "top" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Build pipeline", "items": ["Per-ayah ThreadPool segments, then FFmpeg concat", "Text fetch failure aborts the job — never a silent textless reel", "Segment PNGs and highlight sprites auto-cleaned from temp/"] },
+    { "dot": "emerald", "title": "Ayah text sync", "items": ["RAQM-shaped Uthmani text, auto-fit wrap, 4.5:1 contrast floor", "Anchor lower-center or middle; per-template accent profiles", "Opt-in word highlight: gold sprite, max 60 layers, plain fallback"] },
+    { "dot": "amber", "title": "Preview + progress", "items": ["POST /api/preview renders one ayah at low quality", "UI polls GET /api/progress; player has speed and fullscreen", "show_text, highlight_words, text_position per request"] }
+  ]
+}
