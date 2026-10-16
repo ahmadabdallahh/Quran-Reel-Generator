@@ -446,6 +446,160 @@ function syncHighlightToggle() {
 showTextCheckbox.addEventListener('change', syncHighlightToggle);
 syncHighlightToggle();
 
+// --- Custom dropdowns (native <select> lists paint OS-blue; the proxy
+// below renders the same value through design tokens while the hidden
+// native select keeps every existing reader/writer working untouched) ---
+function enhanceSelect(select) {
+    if (select.dataset.enhanced) return;
+    select.dataset.enhanced = '1';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'relative';
+    select.parentElement.insertBefore(wrap, select);
+    wrap.appendChild(select);
+    select.classList.add('hidden');
+
+    const label = select.closest('div').parentElement.querySelector('label');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'ds-btn w-full rounded-2xl border-2 border-gold/25 bg-white px-5 py-[15px] text-ink outline-none transition cursor-pointer hover:border-gold/50 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none disabled:opacity-45 disabled:cursor-not-allowed flex items-center justify-between gap-3 text-right';
+    btn.setAttribute('aria-haspopup', 'listbox');
+    btn.setAttribute('aria-expanded', 'false');
+    if (label) btn.setAttribute('aria-label', label.innerText.trim());
+    else if (select.title) btn.setAttribute('aria-label', select.title);
+    else if (select.id) btn.setAttribute('aria-label', select.id);
+    const btnLabel = document.createElement('span');
+    btnLabel.className = 'flex-1 truncate';
+    const chev = document.createElement('span');
+    chev.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#0c6e47" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
+    chev.className = 'shrink-0';
+    btn.appendChild(btnLabel);
+    btn.appendChild(chev);
+
+    const list = document.createElement('ul');
+    list.setAttribute('role', 'listbox');
+    list.hidden = true;
+    list.className = 'absolute z-30 mt-2 w-full max-h-60 overflow-y-auto rounded-2xl border-2 border-gold/25 bg-white py-2 shadow-[0_20px_50px_rgba(74,60,25,0.25)]';
+
+    wrap.appendChild(btn);
+    wrap.appendChild(list);
+    // Toolbar mini-select gets a compact button
+    if (select.id === 'speedSelect') {
+        btn.classList.remove('py-[15px]', 'rounded-2xl');
+        btn.classList.add('py-2', 'rounded-xl', 'text-sm');
+    }
+
+    let items = [];
+    let activeIdx = -1;
+
+    function paint() {
+        list.innerHTML = '';
+        items = [];
+        const opts = Array.from(select.options);
+        opts.forEach((opt) => {
+            if (opt.style.display === 'none') return;
+            const li = document.createElement('li');
+            li.setAttribute('role', 'option');
+            li.setAttribute('tabindex', '-1');
+            li.id = `${select.id}-opt-${items.length}`;
+            const selected = opt.selected;
+            li.setAttribute('aria-selected', selected ? 'true' : 'false');
+            li.textContent = opt.textContent;
+            li.className = 'px-5 py-2.5 cursor-pointer transition text-ink ' +
+                (selected ? 'bg-action text-foam font-bold' : 'hover:bg-action/10');
+            li.addEventListener('click', () => choose(items.indexOf(li)));
+            li.addEventListener('mousemove', () => setActive(items.indexOf(li), false));
+            list.appendChild(li);
+            items.push(li);
+        });
+        const current = opts.find((o) => o.selected) || opts[0];
+        btnLabel.textContent = current ? current.textContent : '';
+        btn.disabled = select.disabled;
+        activeIdx = items.findIndex((li) => li.getAttribute('aria-selected') === 'true');
+    }
+
+    function setActive(idx, focusIt = true) {
+        if (!items.length) return;
+        activeIdx = (idx + items.length) % items.length;
+        items.forEach((li, i) => {
+            const on = i === activeIdx;
+            li.classList.toggle('bg-action/15', on && li.getAttribute('aria-selected') !== 'true');
+            if (on) {
+                list.setAttribute('aria-activedescendant', li.id);
+                li.scrollIntoView({ block: 'nearest' });
+                if (focusIt) li.focus();
+            }
+        });
+    }
+
+    function open() {
+        if (btn.disabled) return;
+        paint();
+        list.hidden = false;
+        btn.setAttribute('aria-expanded', 'true');
+        setActive(Math.max(activeIdx, 0));
+    }
+
+    function close(returnFocus = true) {
+        list.hidden = true;
+        btn.setAttribute('aria-expanded', 'false');
+        if (returnFocus) btn.focus();
+    }
+
+    function choose(idx) {
+        if (idx < 0 || idx >= items.length) return;
+        const visible = Array.from(select.options).filter((o) => o.style.display !== 'none');
+        select.selectedIndex = Array.from(select.options).indexOf(visible[idx]);
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        paint();
+        close();
+    }
+
+    btn.addEventListener('click', () => (list.hidden ? open() : close(false)));
+    btn.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            open();
+        }
+    });
+    list.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            close();
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setActive(activeIdx + 1);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setActive(activeIdx - 1);
+        } else if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            choose(activeIdx);
+        } else if (e.key === 'Tab') {
+            close(false);
+        }
+    });
+    document.addEventListener('click', (e) => {
+        if (!wrap.contains(e.target) && !list.hidden) close(false);
+    });
+
+    // Keep the proxy honest: any native mutation (options loaded, search
+    // filter, disabled sync) repaints it.
+    new MutationObserver(paint).observe(select, {
+        childList: true,
+        attributes: true,
+        subtree: true,
+        attributeFilter: ['disabled', 'style'],
+    });
+    select.addEventListener('change', () => {
+        if (list.hidden) paint();
+    });
+
+    paint();
+}
+
+document.querySelectorAll('select').forEach(enhanceSelect);
+
 // --- Video player controls (dependency-free player toolbar) ---
 const previewBtnDefaultLabel = previewBtn.innerHTML;
 const playPauseBtn = document.getElementById('playPauseBtn');

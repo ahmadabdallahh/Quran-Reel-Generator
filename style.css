@@ -261,6 +261,12 @@ select option:checked {
     color: var(--color-foam);
 }
 
+/* Custom proxy options (main.js enhanceSelect): keyboard focus ring */
+[role="option"]:focus {
+    outline: 2px solid var(--color-action);
+    outline-offset: -2px;
+}
+
 input:-webkit-autofill {
     -webkit-text-fill-color: var(--color-ink);
     caret-color: var(--color-ink);

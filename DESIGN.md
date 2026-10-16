@@ -235,8 +235,12 @@ Warm and confident: soft glass, clear actions, nothing sharp.
 - **Focus:** border turns emerald with a soft emerald halo ring.
 - **Error / Disabled:** disabled fields fade to 45% with `not-allowed` cursor;
   errors use the rose banner (translucent red fill, #ff6b6b text).
-- **Selects** carry an emerald chevron; **counters** pair emerald steppers
-  with a bold centered value; **checkboxes** tint emerald when checked.
+- **Selects** render through token-styled proxy menus (button + listbox):
+  hovered rows take an emerald wash, the chosen row is solid emerald with
+  foam text; full keyboard support (arrows/enter/escape). The native select
+  stays hidden in the DOM as the value source.
+- **Counters** pair emerald steppers with a bold centered value;
+  **checkboxes** tint emerald when checked.
 
 ### Progress + Player (signature components)
 - **Progress:** dark inset track, emerald gradient fill with a traveling sheen
