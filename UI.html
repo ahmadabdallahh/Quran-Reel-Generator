@@ -25,7 +25,7 @@
     <main class="main-container">
         <div class="content-grid">
             <div class="glass-card">
-                <h2 class="card-title">✨ إعداد الفيديو</h2>
+                <h2 class="card-title"><svg class="title-spark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.2 6.6L21 11l-6.8 2.4L12 20l-2.2-6.6L3 11l6.8-2.4z" /></svg> إعداد الفيديو</h2>
                 <form id="generatorForm" class="form-grid">
                     <div class="form-group full-width">
                         <label class="form-label">
@@ -190,6 +190,7 @@
             <div id="statusCard" class="glass-card status-card">
                 <div class="progress-header">
                     <div class="progress-info">
+                        <span id="liveDot" class="live-dot" aria-hidden="true"></span>
                         <h4 id="statusText">جاري التحضير...</h4>
                     </div>
                     <div class="progress-percentage" id="progressPercent">0%</div>
@@ -201,6 +202,7 @@
                     <div class="log-line">> <span>بانتظار بدء المهمة...</span></div>
                 </div>
                 <div id="videoPreviewWrapper" class="video-preview-wrapper">
+                    <div id="previewSkeleton" class="player-skeleton" hidden></div>
                     <div class="player-frame">
                         <video id="previewVideo" controls preload="metadata" playsinline
                             controlsList="nodownload" disablepictureinpicture>
@@ -208,14 +210,14 @@
                         </video>
                     </div>
                     <div class="player-toolbar">
-                        <button type="button" id="playPauseBtn" class="tool-btn" title="تشغيل / إيقاف">▶</button>
+                        <button type="button" id="playPauseBtn" class="tool-btn" title="تشغيل / إيقاف" aria-label="تشغيل / إيقاف"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg></button>
                         <select id="speedSelect" class="tool-select" title="سرعة التشغيل">
                             <option value="0.5">0.5×</option>
                             <option value="1" selected>1×</option>
                             <option value="1.5">1.5×</option>
                             <option value="2">2×</option>
                         </select>
-                        <button type="button" id="fullscreenBtn" class="tool-btn" title="ملء الشاشة">⛶</button>
+                        <button type="button" id="fullscreenBtn" class="tool-btn" title="ملء الشاشة" aria-label="ملء الشاشة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg></button>
                         <span id="timeLabel" class="time-label">0:00 / 0:00</span>
                     </div>
                     <div class="download-wrapper">

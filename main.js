@@ -253,6 +253,13 @@ function updateUI(data) {
     progressPercent.textContent = `${data.percent}%`;
     statusText.textContent = data.status;
 
+    const previewSkeleton = document.getElementById('previewSkeleton');
+    const liveDot = document.getElementById('liveDot');
+
+    if (data.is_running && previewSkeleton) {
+        previewSkeleton.hidden = false;
+    }
+
     // Logs
     while (displayedLogs < data.log.length) {
         const msg = data.log[displayedLogs];
@@ -288,6 +295,14 @@ function updateUI(data) {
             downloadLink.style.display = 'inline-block';
         }
 
+        if (previewSkeleton) {
+            previewSkeleton.hidden = true;
+        }
+        statusCard.classList.add('done');
+        if (liveDot) {
+            liveDot.hidden = false;
+        }
+
         // Bring the player into view and start playback (muted autoplay
         // policies may block it — the user can press play instead).
         videoPreviewWrapper.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -300,6 +315,10 @@ function updateUI(data) {
     if (data.error) {
         previewBtn.disabled = false;
         previewBtn.innerHTML = previewBtnDefaultLabel;
+        const previewSkeleton = document.getElementById('previewSkeleton');
+        if (previewSkeleton) {
+            previewSkeleton.hidden = true;
+        }
     }
 }
 
@@ -339,6 +358,7 @@ generateBtn.addEventListener('click', async (e) => {
         displayedLogs = 0;
         logTerminal.innerHTML = '';
         videoPreviewWrapper.classList.remove('active');
+        statusCard.classList.remove('done');
 
         const res = await fetch(`${API_BASE}/api/generate`, {
             method: 'POST',
@@ -381,6 +401,7 @@ previewBtn.addEventListener('click', async () => {
         displayedLogs = 0;
         logTerminal.innerHTML = '';
         videoPreviewWrapper.classList.remove('active');
+        statusCard.classList.remove('done');
 
         const res = await fetch(`${API_BASE}/api/preview`, {
             method: 'POST',
@@ -432,6 +453,9 @@ const speedSelect = document.getElementById('speedSelect');
 const fullscreenBtn = document.getElementById('fullscreenBtn');
 const timeLabel = document.getElementById('timeLabel');
 
+const PLAY_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
+const PAUSE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>';
+
 function fmtTime(s) {
     if (!Number.isFinite(s) || s < 0) s = 0;
     const m = Math.floor(s / 60);
@@ -440,7 +464,7 @@ function fmtTime(s) {
 }
 
 function updatePlayPauseIcon() {
-    playPauseBtn.textContent = previewVideo.paused ? '▶' : '⏸';
+    previewVideo.paused ? playPauseBtn.innerHTML = PLAY_SVG : playPauseBtn.innerHTML = PAUSE_SVG;
 }
 
 function updateTimeLabel() {

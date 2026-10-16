@@ -182,9 +182,11 @@ brand light; decorative halos with no role are removed, not toned down.
 Softly architectural: cards swell to a generous curve (32px), the player stage
 holds 24px, buttons steady at 18px, fields at 16px, the log at 12px. True
 pills (999px) belong only to small round tool buttons (play, fullscreen).
-Borders are hairlines of glow color, never gray; the logo tile is a rotated
-square (24px radius) that spins upright on hover — the single authored
-motion moment.
+Borders are hairlines of glow color, never gray; glass carries an inner top
+refraction line (1px warm-white at 9%) so frosted surfaces read as physical.
+The logo tile is a rotated square (24px radius) that spins upright on
+hover — the single authored motion moment, joined only by the form's
+staggered load-in cascade and the progress sheen.
 
 ## Components
 
@@ -218,10 +220,15 @@ Warm and confident: soft glass, clear actions, nothing sharp.
 
 ### Progress + Player (signature components)
 - **Progress:** dark inset track, emerald gradient fill with a traveling sheen
-  while building, emerald percentage in extrabold numerals.
+  while building, emerald percentage in extrabold numerals. A pulsing emerald
+  dot marks "working" and rests steady on done — motion with a resolved end.
+- **Loading:** while a job runs, the player stage shows a 9:16 skeleton with a
+  slow emerald shimmer, never a bare spinner.
 - **Player stage:** 9:16 framed card (24px radius, glow border) with native
   video; below it a centered toolbar — round tool buttons, speed select, live
   time label — then the download link.
+- **Icons:** small glyphs are drawn inline SVG in one stroke family, never
+  unicode symbols or emoji.
 
 ## Do's and Don'ts
 
@@ -238,5 +245,6 @@ Warm and confident: soft glass, clear actions, nothing sharp.
 - **Don't** use gradient text; emphasis comes from weight or size.
 - **Don't** spend the primary emerald on decoration or the gold on buttons.
 - **Don't** add a third typeface, a modal, or a nested card to solve a layout.
+- **Don't** use unicode glyphs or emoji as icons; draw one SVG stroke family.
 - **Don't** ship a new screen that the live panel cannot render from these
   tokens — extend the system instead.

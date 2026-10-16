@@ -53,6 +53,7 @@ body {
     background: var(--bg-dark);
     background-image: var(--gradient-premium);
     min-height: 100vh;
+    min-height: 100dvh;
     color: var(--text-primary);
     overflow-x: hidden;
     position: relative;
@@ -191,8 +192,8 @@ body::before {
     -webkit-backdrop-filter: blur(25px);
     border-radius: 32px;
     border: 1px solid var(--border-glow);
+    box-shadow: var(--shadow-premium), inset 0 1px 0 rgba(247, 244, 234, 0.09);
     padding: 40px;
-    box-shadow: var(--shadow-premium);
     position: relative;
     overflow: hidden;
 }
@@ -284,7 +285,7 @@ body::before {
 
 .form-hint {
     margin: 6px 0 0 0;
-    color: var(--text-muted, rgba(255,255,255,0.5));
+    color: var(--text-muted, rgba(255, 255, 255, 0.5));
     font-size: 0.85rem;
     text-align: right;
     font-weight: 400;
@@ -455,6 +456,14 @@ select.form-control::-webkit-scrollbar-thumb {
     transform: translateY(-5px) scale(1.02);
 }
 
+.premium-btn:active {
+    transform: translateY(-1px) scale(0.98);
+}
+
+.tool-btn:active {
+    transform: scale(0.94);
+}
+
 .btn-primary:hover {
     box-shadow: 0 15px 40px rgba(52, 211, 153, 0.45);
 }
@@ -467,6 +476,123 @@ select.form-control::-webkit-scrollbar-thumb {
 .premium-btn svg {
     width: 24px;
     height: 24px;
+}
+
+/* ----- Form load-in cascade ----- */
+@keyframes riseIn {
+    from {
+        opacity: 0;
+        transform: translateY(14px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.form-grid > * {
+    animation: riseIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.form-grid > *:nth-child(1) { animation-delay: 0.02s; }
+.form-grid > *:nth-child(2) { animation-delay: 0.06s; }
+.form-grid > *:nth-child(3) { animation-delay: 0.10s; }
+.form-grid > *:nth-child(4) { animation-delay: 0.14s; }
+.form-grid > *:nth-child(5) { animation-delay: 0.18s; }
+.form-grid > *:nth-child(6) { animation-delay: 0.22s; }
+.form-grid > *:nth-child(7) { animation-delay: 0.26s; }
+.form-grid > *:nth-child(8) { animation-delay: 0.30s; }
+.form-grid > *:nth-child(n+9) { animation-delay: 0.34s; }
+
+/* ----- Live status dot ----- */
+.progress-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.live-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--action);
+    flex-shrink: 0;
+    animation: dotPulse 1.6s ease-in-out infinite;
+}
+
+.status-card.done .live-dot {
+    animation: none;
+    background: var(--action);
+    box-shadow: 0 0 8px rgba(52, 211, 153, 0.6);
+}
+
+@keyframes dotPulse {
+    0%, 100% {
+        opacity: 1;
+        box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.5);
+    }
+
+    50% {
+        opacity: 0.55;
+        box-shadow: 0 0 0 7px rgba(52, 211, 153, 0);
+    }
+}
+
+/* ----- Preview skeleton (loading state) ----- */
+.player-skeleton {
+    aspect-ratio: 9 / 16;
+    max-width: 350px;
+    margin-left: auto;
+    margin-right: auto;
+    border-radius: 24px;
+    border: 1px solid var(--border-glow);
+    background: linear-gradient(100deg, var(--bg-secondary) 30%, rgba(52, 211, 153, 0.12) 50%, var(--bg-secondary) 70%);
+    background-size: 200% 100%;
+    animation: skeletonShimmer 1.4s linear infinite;
+}
+
+.player-skeleton[hidden] {
+    display: none;
+}
+
+@keyframes skeletonShimmer {
+    from {
+        background-position: 180% 0;
+    }
+
+    to {
+        background-position: -80% 0;
+    }
+}
+
+/* ----- Title + tool glyphs (drawn SVG, one stroke family) ----- */
+.title-spark {
+    width: 26px;
+    height: 26px;
+    fill: var(--primary-gold);
+    vertical-align: -4px;
+    margin-left: 6px;
+}
+
+.tool-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tool-btn svg {
+    width: 18px;
+    height: 18px;
+    fill: var(--text-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .form-grid > *,
+    .live-dot,
+    .player-skeleton {
+        animation: none;
+    }
 }
 
 /* ----- Status / Progress ----- */
@@ -619,7 +745,7 @@ select.form-control::-webkit-scrollbar-thumb {
     max-width: 350px;
     margin-left: auto;
     margin-right: auto;
-    box-shadow: 0 30px 60px rgba(0, 0, 0, 0.8);
+    box-shadow: 0 30px 60px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(247, 244, 234, 0.12);
     border: 3px solid var(--border-glow);
     background: #000;
 }
