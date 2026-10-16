@@ -1,4 +1,4 @@
-# 📖 Quran Reels Generator
+# Quran Reels Generator
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.11+-blue.svg" alt="Python 3.11+">
@@ -27,14 +27,14 @@ flowchart LR
 
 | Feature | Plain words |
 |---|---|
-| 🎥 Vertical video | 1080×1920 (9:16) for Reels/Story, plus 1:1 square posts |
-| 📖 Ayah text on screen | The exact verse being recited appears on the video, timed to its audio |
-| ✨ Word highlighting (experimental) | A gold spotlight moves word by word as it is recited |
-| 📍 Text position | Bottom of the video, or centered in the middle |
-| 🎙️ 12+ reciters | AbdulBasit, Sudais, Minshawy, Shuraym, Husary, and more |
-| 🖼️ 4 visual themes | Ramadan, Normal, Masjid, Islamic — each picks its own backgrounds |
-| 👀 Preview player | Test one ayah fast, with play/pause, 0.5–2× speed, fullscreen |
-| ⚡ Smart and fast | Audio is cached, backgrounds rotate without repeats, parallel building |
+| Vertical video | 1080×1920 (9:16) for Reels/Story, plus 1:1 square posts |
+| Ayah text on screen | The exact verse being recited appears on the video, timed to its audio |
+| Word highlighting (experimental) | A gold spotlight moves word by word as it is recited |
+| Text position | Bottom of the video, or centered in the middle |
+| 12+ reciters | AbdulBasit, Sudais, Minshawy, Shuraym, Husary, and more |
+| 4 visual themes | Ramadan, Normal, Masjid, Islamic — each picks its own backgrounds |
+| Preview player | Test one ayah fast, with play/pause, 0.5–2x speed, fullscreen |
+| Smart and fast | Audio is cached, backgrounds rotate without repeats, parallel building |
 
 ---
 
@@ -42,16 +42,16 @@ flowchart LR
 
 You need these installed. Each one has a single job:
 
-| Tool | Version | Job |
-|---|---|---|
-| 🟢 Python | 3.11+ | Runs the app |
-| 🟢 FFmpeg + FFprobe | 6.0+ | Cuts, merges, and encodes the video |
-| 🔵 Flask 3.0.3 | in `requirements.txt` | The local website + API |
-| 🔵 Pillow 10.4.0 | in `requirements.txt` | Draws the Arabic text (needs RAQM support) |
-| 🔵 requests, numpy, dotenv… | in `requirements.txt` | Downloads audio/text, math, settings |
-| 🔵 Scheherazade New font | bundled in `assets/fonts/` | The Quran-style typeface, already included |
+| Status | Tool | Version | Job |
+|---|---|---|---|
+| Required | Python | 3.11+ | Runs the app |
+| Required | FFmpeg + FFprobe | 6.0+ | Cuts, merges, and encodes the video |
+| Auto | Flask 3.0.3 | in `requirements.txt` | The local website + API |
+| Auto | Pillow 10.4.0 | in `requirements.txt` | Draws the Arabic text (needs RAQM support) |
+| Auto | requests, numpy, dotenv… | in `requirements.txt` | Downloads audio/text, math, settings |
+| Auto | Scheherazade New font | bundled in `assets/fonts/` | The Quran-style typeface, already included |
 
-Legend: 🟢 you install · 🔵 comes automatically
+Status: Required = you install · Auto = comes automatically
 
 ---
 
@@ -92,7 +92,7 @@ python -c "from PIL import features; print(features.check('raqm'))"  # must prin
 ```
 
 Then open `http://127.0.0.1:5000/api/config` in the browser — you should see
-a JSON list of reciters and surahs. If yes, the app is alive. ✅
+a JSON list of reciters and surahs. If yes, the app is alive.
 
 > FFmpeg lookup order: `QURAN_FFMPEG_EXE` setting → `bin/ffmpeg/` folder →
 > system PATH. Any one of the three is enough.
@@ -103,28 +103,26 @@ a JSON list of reciters and surahs. If yes, the app is alive. ✅
 
 Only two folders need your attention. Everything else is automatic:
 
-| Folder | Status | What goes inside |
+| Status | Folder | What goes inside |
 |---|---|---|
-| 🟡 `vision/nature/`, `vision/islamic/`, `vision/masjid/`, `vision/night/` | You fill | Your background `.mp4` clips, sorted by mood. Without them there is nothing to show behind the text |
-| 🔵 `outputs/video/` | Auto-created | Your finished videos land here |
-| 🔵 `cache/audio/`, `cache/backgrounds/` | Auto-created | Downloaded recitations + processed clips, so the second run is faster |
-| 🔵 `temp/` | Auto-created + cleaned | Work files, deleted automatically |
-| ⚪ `assets/fonts/`, `quran_reels/`, `specs/` | Don't touch | Font, backend code, feature specs |
-
-Legend: 🟡 you fill · 🔵 automatic · ⚪ leave alone
+| You fill | `vision/nature/`, `vision/islamic/`, `vision/masjid/`, `vision/night/` | Your background `.mp4` clips, sorted by mood. Without them there is nothing to show behind the text |
+| Automatic | `outputs/video/` | Your finished videos land here |
+| Automatic | `cache/audio/`, `cache/backgrounds/` | Downloaded recitations + processed clips, so the second run is faster |
+| Automatic | `temp/` | Work files, deleted automatically |
+| Leave alone | `assets/fonts/`, `quran_reels/`, `specs/` | Font, backend code, feature specs |
 
 ### Where do video, audio, and text come from?
 
 ```mermaid
 flowchart TB
-    subgraph YOU["🟡 You provide"]
+    subgraph YOU["You provide"]
         BG[Background clips in vision/]
     end
-    subgraph NET["🌐 Downloaded automatically"]
+    subgraph NET["Downloaded automatically"]
         AU[Recitation MP3 from everyayah.com]
         TX[Ayah text from api.alquran.cloud]
     end
-    subgraph APP["🔵 App builds"]
+    subgraph APP["App builds"]
         AU --> SEG[One video segment per ayah]
         TX --> PNG[Text image per ayah]
         PNG --> SEG
@@ -161,7 +159,7 @@ card with the video player on the other.
 10. **Word highlighting** — experimental gold spotlight, word by word
     (needs step 8 on).
 11. **Max duration (optional)** — caps the video length; extra ayahs are dropped.
-12. **Recitation speed** — 0.5× slower … 2× faster, pitch unchanged.
+12. **Recitation speed** — 0.5x slower … 2x faster, pitch unchanged.
 13. **Transition style** — how segments blend into each other.
 14. **Format** — Reels/TikTok (9:16), Story (9:16), or square Post (1:1).
 15. Press **Preview** for a quick one-ayah test, or **Generate Video** for the
@@ -246,4 +244,4 @@ Apache 2.0 — see [LICENSE](LICENSE).
 - Audio: [EveryAyah.com](https://everyayah.com) + quranicaudio.com mirrors
 - Font: Scheherazade New (OFL, bundled) · Backgrounds: yours (check their license)
 
-<p align="center">Made with ❤️ for the Ummah</p>
+<p align="center">Made for the Ummah</p>
