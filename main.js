@@ -478,7 +478,8 @@ function enhanceSelect(select) {
     btn.setAttribute('aria-haspopup', 'listbox');
     btn.setAttribute('aria-expanded', 'false');
     if (label) {
-        btn.setAttribute('aria-label', (label.textContent || '').trim() || select.id);
+        const name = (label.textContent || '').replace(/\s+/g, ' ').trim();
+        btn.setAttribute('aria-label', name || select.id);
     } else if (select.title) btn.setAttribute('aria-label', select.title);
     else if (select.id) btn.setAttribute('aria-label', select.id);
     const btnLabel = document.createElement('span');
@@ -492,7 +493,7 @@ function enhanceSelect(select) {
     const list = document.createElement('ul');
     list.setAttribute('role', 'listbox');
     list.hidden = true;
-    list.className = 'absolute z-30 mt-2 w-full max-h-60 overflow-y-auto rounded-2xl border-2 border-gold/25 bg-white py-2 shadow-[0_20px_50px_rgba(74,60,25,0.25)]';
+    list.className = 'absolute z-50 mt-2 w-full max-h-[min(60vh,22rem)] overflow-y-auto rounded-2xl border-2 border-gold/25 bg-white p-2 shadow-[0_20px_50px_rgba(74,60,25,0.25)]';
 
     wrap.appendChild(btn);
     wrap.appendChild(list);
@@ -513,8 +514,14 @@ function enhanceSelect(select) {
             const selected = opt.selected;
             li.setAttribute('aria-selected', selected ? 'true' : 'false');
             li.textContent = opt.textContent;
-            li.className = 'px-5 py-2.5 cursor-pointer transition text-ink ' +
-                (selected ? 'bg-action text-foam font-bold' : 'hover:bg-action/10');
+            li.className = 'flex items-center justify-between gap-3 rounded-xl px-4 py-2.5 cursor-pointer transition ' +
+                (selected ? 'bg-action font-bold text-foam' : 'text-ink hover:bg-action/10');
+            if (selected) {
+                const tick = document.createElement('span');
+                tick.className = 'shrink-0 text-foam/80';
+                tick.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>';
+                li.appendChild(tick);
+            }
             li.addEventListener('click', () => choose(items.indexOf(li)));
             li.addEventListener('mousemove', () => setActive(items.indexOf(li), false));
             list.appendChild(li);
@@ -534,23 +541,46 @@ function enhanceSelect(select) {
             li.classList.toggle('bg-action/15', on && li.getAttribute('aria-selected') !== 'true');
             if (on) {
                 list.setAttribute('aria-activedescendant', li.id);
-                li.scrollIntoView({ block: 'nearest' });
+                const listBox = list.getBoundingClientRect();
+                const rowBox = li.getBoundingClientRect();
+                if (rowBox.top < listBox.top) list.scrollTop -= listBox.top - rowBox.top;
+                else if (rowBox.bottom > listBox.bottom) list.scrollTop += rowBox.bottom - listBox.bottom;
                 if (focusIt) li.focus();
             }
         });
     }
 
+    // The grid cells carry a load-in transform, which makes every cell its own
+    // stacking context. Raise the open cell so the list paints over the fields
+    // that follow it in the DOM.
+    function raiseCell(on) {
+        const cell = wrap.parentElement;
+        cell.style.position = 'relative';
+        cell.style.zIndex = on ? '40' : '';
+    }
+
     function open() {
         if (btn.disabled) return;
         paint();
+        raiseCell(true);
         list.hidden = false;
         btn.setAttribute('aria-expanded', 'true');
+        // Flip above the button when the list would run past the viewport.
+        const room = window.innerHeight - btn.getBoundingClientRect().bottom;
+        const flip = room < 300 && btn.getBoundingClientRect().top > 300;
+        list.style.top = flip ? 'auto' : '';
+        list.style.bottom = flip ? 'calc(100% + 0.5rem)' : '';
+        list.classList.toggle('mt-2', !flip);
         setActive(Math.max(activeIdx, 0));
     }
 
     function close(returnFocus = true) {
         list.hidden = true;
         btn.setAttribute('aria-expanded', 'false');
+        list.style.top = '';
+        list.style.bottom = '';
+        list.classList.add('mt-2');
+        raiseCell(false);
         if (returnFocus) btn.focus();
     }
 

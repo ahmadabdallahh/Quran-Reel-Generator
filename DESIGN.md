@@ -146,23 +146,25 @@ card, ink, action, actionink, mint, mintlight, track, gold, honey, term, foam,
 sand, golddeep`). `static` matters: Tailwind v4 otherwise emits only the
 variables some utility happens to use, and plain-CSS rules such as the slider
 rail would resolve `var(--color-sand)` to nothing and drop the declaration.
-`style.css` holds no color of its own — every value reads `var(--color-*)`,
-except data-URI literals (select chevron, dot pattern) and alpha shadows, which
-cannot reference tokens and are commented where they appear.
+`style.css` reads tokens for everything utilities cannot express, except for
+the two accent aliases (`--accent`, `--accent-ink`) that let range thumbs,
+focus halos and scrollbars keep working without depending on theme emission.
+Data-URI literals (select chevron, dot pattern) and alpha shadows stay
+hardcoded and are commented where they appear.
 
 ### Focus System
 One indicator: the emerald `focus-visible` ring. Native states stay inside the
-system too — checked dropdown options get emerald with foam text, autofill
-keeps card fill and ink text, and the video keeps a scoped gold outline. The
-custom select proxies use `currentColor` chevrons tied to the action token and
-report their state through `aria-expanded`/`aria-selected`.
+system too — checked dropdown options get solid emerald, foam text and a drawn
+tick, autofill keeps card fill and ink text, and the video keeps a scoped gold
+outline. The custom select proxies use `currentColor` chevrons tied to the
+action token and report their state through `aria-expanded`/`aria-selected`.
 
 ### Light Theme
 Warm paper is the default and only theme: paper canvas (#f4f1e8), cream cards
 (#fffdf6), ink text (#1d2b23), action emerald (#0c6e47) and honey gold
 (#8a5f16) so every pair passes AA. Primary fills use solid emerald with foam
-text; the progress meter keeps its emerald gradient. The build log stays a dark
-terminal. Implemented with Tailwind
+text; the progress meter is the same solid emerald, with a light sheen while
+building. The build log stays a dark terminal. Implemented with Tailwind
 utilities over shared `@theme` tokens; `style.css` keeps only what utilities
 cannot express (ambient background, logo tile, slider and chevron primitives,
 keyframes, player state classes, scrollbars). Large surfaces use near-solid
@@ -266,9 +268,12 @@ Warm and confident: cream surfaces, one emerald action, nothing sharp.
 - **Error / Disabled:** disabled fields fade to 45% with `not-allowed` cursor;
   failed requests surface as an alert and the button returns to its idle label.
 - **Selects** render through token-styled proxy menus (button + listbox):
-  hovered rows take an emerald wash, the chosen row is solid emerald with
-  foam text; full keyboard support (arrows/enter/escape). The native select
-  stays hidden in the DOM as the value source.
+  the list is opaque white with inset 12px row pills, hovered rows take an
+  emerald wash, the chosen row is solid emerald with foam text and a drawn
+  tick (state never rests on color alone); full keyboard support
+  (arrows/enter/escape), flips above the button when the viewport runs out of
+  room, and raises its grid cell so it paints over later fields. The native
+  select stays hidden in the DOM as the value source.
 - **Counters** pair emerald steppers with a bold centered value and no native
   spinners; **checkboxes** tint emerald when checked and sit in one bordered
   block with hairline dividers.
@@ -277,7 +282,7 @@ Warm and confident: cream surfaces, one emerald action, nothing sharp.
   halo on keyboard focus, full-width 28px hit area.
 
 ### Progress + Player (signature components)
-- **Progress:** sand inset track, emerald gradient fill with a traveling sheen
+- **Progress:** sand inset track, solid emerald fill with a traveling sheen
   while building, emerald percentage in extrabold numerals (`aria-hidden`;
   the track carries `role="progressbar"` and live `aria-valuenow`). A pulsing
   emerald dot marks "working" and rests steady on done.
