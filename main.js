@@ -47,20 +47,26 @@ const personNameInput = document.getElementById('personName');
 
 const generateBtn = document.getElementById('generateBtn');
 const previewBtn = document.getElementById('previewBtn');
+const generatorForm = document.getElementById('generatorForm');
 
 const statusCard = document.getElementById('statusCard');
 const progressFill = document.getElementById('progressFill');
 const progressPercent = document.getElementById('progressPercent');
+const progressTrack = document.getElementById('progressTrack');
 const statusText = document.getElementById('statusText');
 const logTerminal = document.getElementById('logTerminal');
 
 const videoPreviewWrapper = document.getElementById('videoPreviewWrapper');
 const previewVideo = document.getElementById('previewVideo');
+const previewSkeleton = document.getElementById('previewSkeleton');
+
+// Button labels carry drawn SVG icons now, so restore the captured markup
+// instead of a text-only string when a job ends.
+let generateBtnDefaultLabel = '';
 
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', () => {
     initSurahs();
-    initParticles();
     initCounters();
 
     // Check for existing progress
@@ -177,22 +183,6 @@ function initCounters() {
     }
 }
 
-function initParticles() {
-    const container = document.getElementById('particles');
-    for (let i = 0; i < 30; i++) {
-        const p = document.createElement('div');
-        p.className = 'particle';
-        const size = Math.random() * 4 + 2;
-        p.style.width = `${size}px`;
-        p.style.height = `${size}px`;
-        p.style.left = `${Math.random() * 100}%`;
-        p.style.bottom = `-20px`;
-        p.style.animationDuration = `${Math.random() * 10 + 10}s`;
-        p.style.animationDelay = `${Math.random() * 5}s`;
-        container.appendChild(p);
-    }
-}
-
 async function loadConfig() {
     try {
         const response = await fetch(`${API_BASE}/api/config`);
@@ -221,6 +211,8 @@ const loadAvailableFonts = loadConfig;
 let displayedLogs = 0;
 let progressInterval = null;
 
+const WORKING_LABEL = '<span>جاري العمل</span><span class="loading-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>';
+
 async function pollProgress() {
     try {
         const res = await fetch(`${API_BASE}/api/progress`);
@@ -234,12 +226,12 @@ async function pollProgress() {
         if (data.is_running && !progressInterval) {
             progressInterval = setInterval(pollProgress, 1000);
             generateBtn.disabled = true;
-            generateBtn.innerHTML = '<span>جاري العمل...</span> <div class="loading-dots"><span>.</span><span>.</span><span>.</span></div>';
+            generateBtn.innerHTML = WORKING_LABEL;
         } else if (!data.is_running && progressInterval) {
             clearInterval(progressInterval);
             progressInterval = null;
             generateBtn.disabled = false;
-            generateBtn.innerHTML = '<span>إنشاء الفيديو</span>';
+            generateBtn.innerHTML = generateBtnDefaultLabel;
             previewBtn.disabled = false;
             previewBtn.innerHTML = previewBtnDefaultLabel;
         }
@@ -248,26 +240,48 @@ async function pollProgress() {
     }
 }
 
+function appendLog(msg) {
+    const line = document.createElement('div');
+    line.className = 'log-line';
+    line.textContent = `> ${msg}`;
+    logTerminal.appendChild(line);
+    logTerminal.scrollTop = logTerminal.scrollHeight;
+}
+
+function setPlayerState(state) {
+    // state: 'idle' | 'building' | 'ready'
+    videoPreviewWrapper.classList.toggle('active', state !== 'idle');
+    videoPreviewWrapper.classList.toggle('has-video', state === 'ready');
+    previewSkeleton.hidden = state !== 'building';
+}
+
+function resetPlayer() {
+    displayedLogs = 0;
+    logTerminal.innerHTML = '<div class="log-line">&gt; <span>بانتظار بدء المهمة...</span></div>';
+    statusCard.classList.remove('done');
+    statusText.textContent = 'جاري التحضير...';
+    progressFill.style.width = '0%';
+    progressPercent.textContent = '0%';
+    progressTrack.setAttribute('aria-valuenow', '0');
+    setPlayerState('idle');
+    previewVideo.pause();
+    previewVideo.removeAttribute('src');
+    previewVideo.load();
+}
+
 function updateUI(data) {
     progressFill.style.width = `${data.percent}%`;
     progressPercent.textContent = `${data.percent}%`;
+    progressTrack.setAttribute('aria-valuenow', String(data.percent));
     statusText.textContent = data.status;
 
-    const previewSkeleton = document.getElementById('previewSkeleton');
-    const liveDot = document.getElementById('liveDot');
-
-    if (data.is_running && previewSkeleton) {
-        previewSkeleton.hidden = false;
+    if (data.is_running) {
+        setPlayerState('building');
     }
 
-    // Logs
+    // Logs (textContent: build log text is never parsed as markup)
     while (displayedLogs < data.log.length) {
-        const msg = data.log[displayedLogs];
-        const line = document.createElement('div');
-        line.className = 'log-line';
-        line.innerHTML = `> <span>${msg}</span>`;
-        logTerminal.appendChild(line);
-        logTerminal.scrollTop = logTerminal.scrollHeight;
+        appendLog(data.log[displayedLogs]);
         displayedLogs++;
     }
 
@@ -282,43 +296,27 @@ function updateUI(data) {
             previewVideo.load();
         }
 
-        // Always show video preview and download link when video is generated
-        if (!videoPreviewWrapper.classList.contains('active')) {
-            videoPreviewWrapper.classList.add('active');
-        }
+        setPlayerState('ready');
 
         // Update download link - ensure it's always visible
         const downloadLink = document.getElementById('downloadLink');
         if (downloadLink) {
             downloadLink.href = videoUrl;
             downloadLink.textContent = 'تحميل الفيديو';
-            downloadLink.style.display = 'inline-block';
         }
 
-        if (previewSkeleton) {
-            previewSkeleton.hidden = true;
-        }
         statusCard.classList.add('done');
-        if (liveDot) {
-            liveDot.hidden = false;
-        }
 
-        // Bring the player into view and start playback (muted autoplay
-        // policies may block it — the user can press play instead).
+        // Bring the player into view and start playback (autoplay policies
+        // may block it — native controls let the user press play instead).
         videoPreviewWrapper.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         previewVideo.play().catch(() => {});
-        updatePlayPauseIcon();
-
-        addLog(`\u2705 الفيديو جاهز! فيديو URL: ${videoUrl}`);
     }
 
     if (data.error) {
         previewBtn.disabled = false;
         previewBtn.innerHTML = previewBtnDefaultLabel;
-        const previewSkeleton = document.getElementById('previewSkeleton');
-        if (previewSkeleton) {
-            previewSkeleton.hidden = true;
-        }
+        setPlayerState(previewVideo.src ? 'ready' : 'idle');
     }
 }
 
@@ -355,10 +353,9 @@ generateBtn.addEventListener('click', async (e) => {
     }
 
     try {
-        displayedLogs = 0;
-        logTerminal.innerHTML = '';
-        videoPreviewWrapper.classList.remove('active');
-        statusCard.classList.remove('done');
+        resetPlayer();
+        generateBtn.disabled = true;
+        generateBtn.innerHTML = WORKING_LABEL;
 
         const res = await fetch(`${API_BASE}/api/generate`, {
             method: 'POST',
@@ -368,18 +365,28 @@ generateBtn.addEventListener('click', async (e) => {
 
         const data = await res.json();
         if (data.success) {
-            generateBtn.disabled = true;
-            generateBtn.innerHTML = '<span>جاري العمل...</span> <div class="loading-dots"><span>.</span><span>.</span><span>.</span></div>';
             if (!progressInterval) {
                 progressInterval = setInterval(pollProgress, 1000);
             }
             pollProgress();
         } else {
+            generateBtn.disabled = false;
+            generateBtn.innerHTML = generateBtnDefaultLabel;
             alert(data.error || 'حدث خطأ في بدء العملية');
         }
     } catch (e) {
+        generateBtn.disabled = false;
+        generateBtn.innerHTML = generateBtnDefaultLabel;
         alert('فشل الاتصال بالخادم: ' + e.message);
     }
+});
+
+// Enter inside a field submits the form: run the same build once and never
+// reload the page. When the browser already fired the button click, the
+// disabled guard stops a second request.
+generatorForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!generateBtn.disabled) generateBtn.click();
 });
 
 previewBtn.addEventListener('click', async () => {
@@ -394,14 +401,10 @@ previewBtn.addEventListener('click', async () => {
     };
 
     previewBtn.disabled = true;
-    const originalPreviewLabel = previewBtn.innerHTML;
-    previewBtn.innerHTML = '<span>جاري إنشاء المعاينة...</span>';
+    previewBtn.innerHTML = '<span>جاري إنشاء المعاينة</span><span class="loading-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>';
 
     try {
-        displayedLogs = 0;
-        logTerminal.innerHTML = '';
-        videoPreviewWrapper.classList.remove('active');
-        statusCard.classList.remove('done');
+        resetPlayer();
 
         const res = await fetch(`${API_BASE}/api/preview`, {
             method: 'POST',
@@ -418,13 +421,13 @@ previewBtn.addEventListener('click', async () => {
         } else {
             alert(data.error || 'تعذر إنشاء المعاينة (تحقق من الاتصال وحاول مجددا)');
             previewBtn.disabled = false;
-            previewBtn.innerHTML = originalPreviewLabel;
+            previewBtn.innerHTML = previewBtnDefaultLabel;
         }
     } catch (e) {
         console.error('Preview error:', e);
         alert('فشل الاتصال بالخادم: ' + e.message);
         previewBtn.disabled = false;
-        previewBtn.innerHTML = originalPreviewLabel;
+        previewBtn.innerHTML = previewBtnDefaultLabel;
     }
 });
 
@@ -462,17 +465,18 @@ function enhanceSelect(select) {
     const label = select.closest('div').parentElement.querySelector('label');
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'ds-btn w-full rounded-2xl border-2 border-gold/25 bg-white px-5 py-[15px] text-ink outline-none transition cursor-pointer hover:border-gold/50 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none disabled:opacity-45 disabled:cursor-not-allowed flex items-center justify-between gap-3 text-right';
+    btn.className = 'ds-btn w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink outline-none transition cursor-pointer hover:border-gold/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none disabled:opacity-45 disabled:cursor-not-allowed flex items-center justify-between gap-3 text-right';
     btn.setAttribute('aria-haspopup', 'listbox');
     btn.setAttribute('aria-expanded', 'false');
-    if (label) btn.setAttribute('aria-label', label.innerText.trim());
-    else if (select.title) btn.setAttribute('aria-label', select.title);
+    if (label) {
+        btn.setAttribute('aria-label', (label.textContent || '').trim() || select.id);
+    } else if (select.title) btn.setAttribute('aria-label', select.title);
     else if (select.id) btn.setAttribute('aria-label', select.id);
     const btnLabel = document.createElement('span');
     btnLabel.className = 'flex-1 truncate';
     const chev = document.createElement('span');
-    chev.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#0c6e47" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
-    chev.className = 'shrink-0';
+    chev.className = 'shrink-0 text-action';
+    chev.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
     btn.appendChild(btnLabel);
     btn.appendChild(chev);
 
@@ -483,11 +487,6 @@ function enhanceSelect(select) {
 
     wrap.appendChild(btn);
     wrap.appendChild(list);
-    // Toolbar mini-select gets a compact button
-    if (select.id === 'speedSelect') {
-        btn.classList.remove('py-[15px]', 'rounded-2xl');
-        btn.classList.add('py-2', 'rounded-xl', 'text-sm');
-    }
 
     let items = [];
     let activeIdx = -1;
@@ -600,56 +599,6 @@ function enhanceSelect(select) {
 
 document.querySelectorAll('select').forEach(enhanceSelect);
 
-// --- Video player controls (dependency-free player toolbar) ---
+// --- Video player: native controls are the single playback surface ---
 const previewBtnDefaultLabel = previewBtn.innerHTML;
-const playPauseBtn = document.getElementById('playPauseBtn');
-const speedSelect = document.getElementById('speedSelect');
-const fullscreenBtn = document.getElementById('fullscreenBtn');
-const timeLabel = document.getElementById('timeLabel');
-
-const PLAY_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
-const PAUSE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>';
-
-function fmtTime(s) {
-    if (!Number.isFinite(s) || s < 0) s = 0;
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60);
-    return `${m}:${String(sec).padStart(2, '0')}`;
-}
-
-function updatePlayPauseIcon() {
-    previewVideo.paused ? playPauseBtn.innerHTML = PLAY_SVG : playPauseBtn.innerHTML = PAUSE_SVG;
-}
-
-function updateTimeLabel() {
-    timeLabel.textContent = `${fmtTime(previewVideo.currentTime)} / ${fmtTime(previewVideo.duration)}`;
-}
-
-playPauseBtn.addEventListener('click', () => {
-    if (!previewVideo.src) return;
-    if (previewVideo.paused) {
-        previewVideo.play().catch(() => {});
-    } else {
-        previewVideo.pause();
-    }
-});
-
-speedSelect.addEventListener('change', () => {
-    previewVideo.playbackRate = parseFloat(speedSelect.value) || 1.0;
-});
-
-fullscreenBtn.addEventListener('click', () => {
-    const frame = document.querySelector('.player-frame');
-    if (document.fullscreenElement) {
-        document.exitFullscreen().catch(() => {});
-    } else if (frame && frame.requestFullscreen) {
-        frame.requestFullscreen().catch(() => {});
-    } else if (previewVideo.webkitEnterFullscreen) {
-        previewVideo.webkitEnterFullscreen();
-    }
-});
-
-previewVideo.addEventListener('play', updatePlayPauseIcon);
-previewVideo.addEventListener('pause', updatePlayPauseIcon);
-previewVideo.addEventListener('timeupdate', updateTimeLabel);
-previewVideo.addEventListener('loadedmetadata', updateTimeLabel);
+generateBtnDefaultLabel = generateBtn.innerHTML;

@@ -1,28 +1,33 @@
 ---
 name: Quran Reels Generator
-description: Warm emerald and honey gold glass over a deep green night — a calm daily tool for building synced Quran reels.
+description: Warm paper and emerald daylight with honey gold brand light — a calm daily tool for building synced Quran reels.
 colors:
-  action: "#34d399"
+  action: "#0c6e47"
   action-ink: "#052e1f"
-  action-deep: "#0a3d27"
-  gold: "#e8b64c"
-  gold-light: "#f6d47e"
-  gold-dark: "#a97e2e"
-  canvas: "#0a0f0c"
-  surface: "#111915"
-  ink: "#f7f4ea"
-  ink-secondary: "rgba(247, 244, 234, 0.78)"
-  ink-muted: "rgba(247, 244, 234, 0.55)"
-  line-glow: "rgba(232, 182, 76, 0.22)"
-  line-action: "rgba(52, 211, 153, 0.35)"
-  error: "#ff6b6b"
+  action-bright: "#34d399"
+  action-mint: "#6ee7b7"
+  gold: "#8a5f16"
+  gold-light: "#e8b64c"
+  gold-dark: "#6e4a10"
+  canvas: "#f4f1e8"
+  canvas-deep: "#e7e1cf"
+  surface: "#fffdf6"
+  surface-input: "#ffffff"
+  track: "#e0d9c2"
+  ink: "#1d2b23"
+  ink-secondary: "rgba(29, 43, 35, 0.80)"
+  ink-muted: "rgba(29, 43, 35, 0.70)"
+  line-glow: "rgba(138, 95, 22, 0.30)"
+  line-action: "rgba(12, 110, 71, 0.25)"
+  terminal: "#060a08"
+  error: "#a12a1f"
 typography:
   display:
     fontFamily: "Amiri, serif"
     fontSize: "3rem"
     fontWeight: 700
-    lineHeight: 1.2
-    letterSpacing: "1px"
+    lineHeight: 1.15
+    letterSpacing: "0px"
   headline:
     fontFamily: "Amiri, serif"
     fontSize: "2rem"
@@ -35,7 +40,7 @@ typography:
     lineHeight: 1.6
   label:
     fontFamily: "Cairo, sans-serif"
-    fontSize: "1rem"
+    fontSize: "0.95rem"
     fontWeight: 600
     lineHeight: 1.5
   mono:
@@ -58,27 +63,27 @@ spacing:
   xl: "40px"
 components:
   button-primary:
-    backgroundColor: "{colors.action}"
+    backgroundColor: "#34d399"
     textColor: "{colors.action-ink}"
     rounded: "{rounded.md}"
     padding: "16px 20px"
   button-primary-hover:
-    backgroundColor: "{colors.action}"
+    backgroundColor: "#6ee7b7"
     textColor: "{colors.action-ink}"
     rounded: "{rounded.md}"
     padding: "16px 20px"
   button-secondary:
-    backgroundColor: "rgba(52, 211, 153, 0.05)"
+    backgroundColor: "rgba(12, 110, 71, 0.05)"
     textColor: "{colors.ink}"
     rounded: "{rounded.md}"
     padding: "16px 20px"
   input-field:
-    backgroundColor: "{colors.surface}"
+    backgroundColor: "{colors.surface-input}"
     textColor: "{colors.ink}"
     rounded: "{rounded.sm}"
-    padding: "15px 20px"
-  glass-card:
-    backgroundColor: "rgba(17, 25, 21, 0.72)"
+    padding: "14px 16px"
+  card-surface:
+    backgroundColor: "{colors.surface}"
     textColor: "{colors.ink}"
     rounded: "{rounded.xl}"
     padding: "40px"
@@ -93,62 +98,71 @@ components:
 Warm first light over green: a calm, welcoming tool that feels alive rather
 than luxurious-cold. The interface is a single-page daily ritual — one form,
 one progress card, one player — so the world stays quiet and lets the two
-accents speak: emerald acts, gold glows. Glass surfaces float over a deep
-green night with ambient light borrowed from both accents; nothing is sharp,
-nothing shouts, and the primary action is always the easiest thing to find.
-The old stark gold-on-black coldness is retired and must never return.
+accents speak: emerald acts, gold glows. Warm paper surfaces carry a soft
+wash of both accents; nothing is sharp, nothing shouts, and the primary action
+is always the easiest thing to find. The old stark gold-on-black coldness is
+retired and must never return.
 
 **Key Characteristics:**
-- Warm emerald action + honey gold brand light on a deep green night
-- Frosted glass cards with ambient glow, never flat panels
+- Warm paper daylight with emerald action and honey gold brand light
+- Quiet surfaces with hairline gold borders, never gray or glassy panels
 - Amiri display serif over Cairo body — Quranic voice, everyday readability
-- Generous radii (16–32px); pills reserved for small round controls
+- Generous radii (16–32px); actions stay at 18px
+- Grouped form sections, so 15 fields read as three short decisions
 
 ## Colors
 
 Emerald acts and gold glows; rarity is the point of both.
 
 ### Primary
-- **Oasis Emerald** (#34d399): the action color — primary buttons, progress,
-  counters, checkboxes, focus borders, log highlights, wayfinding icons. Deep
-  green ink (#052e1f) sits on it (7.7:1).
+- **Oasis Emerald** (#0c6e47): the action color — primary button glow, progress,
+  counters, checkboxes, focus borders, log highlights, wayfinding icons. The
+  primary button keeps the bright mint gradient (#34d399 → #6ee7b7) with deep
+  green ink (#052e1f, 7.7:1) so it stays the loudest thing on the page.
 
 ### Secondary
-- **Honey Gold** (#e8b64c, light #f6d47e, dark #a97e2e): brand light only —
-  logo tile and titles, card borders, glows, scrollbar, focus rings. Never
-  spends itself on actions anymore.
+- **Honey Gold** (#8a5f16, light #e8b64c, dark #6e4a10): brand light only —
+  logo tile and titles, card borders, glows, scrollbar. Never spends itself on
+  actions.
 
 ### Neutral
-- **Green Night** (#0a0f0c): canvas; gradients deepen toward #14211a.
-- **Palm Surface** (#111915): inputs, counters, card glass base.
-- **Warm White** (#f7f4ea): primary text (17.6:1 on canvas).
-- **Warm Secondary** (rgba white .78) and **Warm Muted** (rgba white .55):
-  labels and hints, both passing AA on the canvas.
-- **Glow Line** (rgba gold .22) and **Action Line** (rgba emerald .35): borders.
+- **Warm Paper** (#f4f1e8): canvas; gradients deepen toward #e7e1cf.
+- **Card Cream** (#fffdf6): cards and the toggle block; inputs sit on white.
+- **Ink** (#1d2b23): primary text (13.1:1 on paper).
+- **Ink Secondary** (ink at 80%) and **Ink Muted** (ink at 70%): labels and
+  hints, both passing AA on paper and card.
+- **Glow Line** (gold .30) and **Action Line** (emerald .25): borders.
+- **Progress Track** (#e0d9c2) and **Terminal** (#060a08): inert surfaces.
 
 ### Named Rules
 **The Two Lights Rule.** Emerald moves things forward; gold marks what matters.
 No element wears both jobs, and neither appears where it has no role.
 
 ### Token Source
-One source: Tailwind `@theme` tokens in `UI.html` (`paper, card, ink, action,
-mint, gold, honey, term, foam, sand, golddeep`). `style.css` holds no color
-of its own — every value reads `var(--color-*)`, except data-URI literals
-(select chevron, dot pattern) which are commented with the token they match.
+One source: Tailwind `@theme` tokens in `UI.html` (`paper, paperdeep, card,
+ink, action, actionink, mint, mintlight, track, gold, honey, term, foam, sand,
+golddeep`). `style.css` holds no color of its own — every value reads
+`var(--color-*)`, except data-URI literals (select chevron, dot pattern) and
+alpha shadows, which cannot reference tokens and are commented where they
+appear.
 
 ### Focus System
 One indicator: the emerald `focus-visible` ring. Native states stay inside the
-system too — checked dropdown options get emerald with white text, autofill
-keeps paper fill and ink text, and the video keeps a scoped gold outline.
+system too — checked dropdown options get emerald with foam text, autofill
+keeps card fill and ink text, and the video keeps a scoped gold outline. The
+custom select proxies use `currentColor` chevrons tied to the action token and
+report their state through `aria-expanded`/`aria-selected`.
 
 ### Light Theme
-Warm paper is the default and only theme: paper canvas (#f4f1e8),
-ink text (#1d2b23), deepened action emerald (#0c6e47) and honey gold (#8a5f16)
-so every pair still passes AA. Fills keep the bright emerald gradient with
-deep-green ink. The build log stays a dark terminal. Implemented with
-Tailwind utilities over shared `@theme` tokens; `style.css` keeps only what
-utilities cannot express (ambient background, select chevron, keyframes,
-state classes, scrollbars).
+Warm paper is the default and only theme: paper canvas (#f4f1e8), cream cards
+(#fffdf6), ink text (#1d2b23), action emerald (#0c6e47) and honey gold
+(#8a5f16) so every pair passes AA. Fills keep the bright emerald gradient with
+deep-green ink. The build log stays a dark terminal. Implemented with Tailwind
+utilities over shared `@theme` tokens; `style.css` keeps only what utilities
+cannot express (ambient background, logo tile, slider and chevron primitives,
+keyframes, player state classes, scrollbars). Large surfaces use near-solid
+fills instead of `backdrop-filter`: blur on a scrolling form is a frame-rate
+cost with no visual payoff on paper.
 
 ## Typography
 
@@ -160,12 +174,13 @@ state classes, scrollbars).
 identity in two places only (logo, card title); Cairo does all the work.
 
 ### Hierarchy
-- **Display** (700, 3rem, 1.2): product name in the header, solid Honey Light.
+- **Display** (700, 3rem, 1.15): product name in the header, solid gold.
 - **Headline** (700, 2rem, 1.3): card titles, centered, with a short gold rule.
-- **Title** (600, 1.1rem): section labels inside the progress card.
+- **Title** (600, 0.95rem): the four form group titles and the status card title.
 - **Body** (400, 1rem, 1.6): form text, hints, buttons; measure stays narrow
   (single centered column, max 900px).
-- **Label** (600, 1rem): field labels with a 20px emerald glyph icon.
+- **Label** (600, 0.95rem): plain Cairo field labels, no per-field glyphs — the
+  group title plus the field name is enough orientation.
 - **Mono** (400, 0.9rem): build log lines only.
 
 ### Named Rules
@@ -176,22 +191,29 @@ typeface, no display face outside the header and card titles.
 
 One centered column (max 900px), one card per concern: the setup form, then
 the status/progress card, then the 9:16 player stage (max 350px wide) with its
-toolbar and download. Form fields sit in a two-up grid collapsing to one
-column under 768px; groups breathe at 20–30px rhythm with 40px card padding.
-RTL throughout: hints and labels right-aligned, select chevrons on the left.
+native controls and download. The form reads as four labelled groups — content and
+recitation, ayah range, visual output, extra options — each introduced by a
+small gold title with a hairline rule, so fifteen fields never present as one
+wall. Fields sit in a two-up grid collapsing to one column under 768px; groups
+breathe at 28px rhythm with 40px card padding. Toggles live in one bordered
+block with hairline dividers rather than three floating rows. RTL throughout:
+hints and labels right-aligned, select chevrons on the left.
 
 ## Elevation & Depth
 
-Layered glass with purposeful glow — depth comes from frosted surfaces lifting
-off the night plus a wash of accent light, never from gray steps.
+Layered paper with purposeful glow — depth comes from cream surfaces lifting off
+the warm canvas plus a wash of accent light, never from gray steps or dark
+shadows.
 
 ### Shadow Vocabulary (if applicable)
-- **Brand glow** (`box-shadow: 0 8px 28px rgba(232, 182, 76, 0.22)`): logo tile,
-  gold-focus moments.
-- **Action glow** (`box-shadow: 0 10px 30px rgba(52, 211, 153, 0.28)`,
-  deepening to 0.45 on hover): primary buttons only.
-- **Premium lift** (`box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5)`): glass cards.
-- **Inset wash** (`box-shadow: inset 0 2px 5px rgba(0,0,0,0.5)`): progress track.
+- **Brand glow** (`box-shadow: 0 10px 26px rgba(138, 95, 22, 0.30)`): logo tile
+  and the honey mark.
+- **Action glow** (`box-shadow: 0 10px 30px rgba(12, 110, 71, 0.26)`,
+  deepening to 0.32 on hover): primary buttons only.
+- **Soft lift** (`box-shadow: 0 20px 50px rgba(74, 60, 25, 0.16)`): cards,
+  tinted to the warm paper hue, never neutral black.
+- **Inset wash** (`box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.18)`): progress
+  track and slider rail.
 
 ### Named Rules
 **The Light Means Something Rule.** Every glow traces to emerald action or gold
@@ -201,56 +223,64 @@ brand light; decorative halos with no role are removed, not toned down.
 
 Softly architectural: cards swell to a generous curve (32px), the player stage
 holds 24px, buttons steady at 18px, fields at 16px, the log at 12px. True
-pills (999px) belong only to small round tool buttons (play, fullscreen).
-Borders are hairlines of glow color, never gray; glass carries an inner top
-refraction line (1px warm-white at 9%) so frosted surfaces read as physical.
-The logo tile is a rotated square (24px radius) that spins upright on
-hover — the single authored motion moment, joined only by the form's
-staggered load-in cascade and the progress sheen.
+pills (999px) are reserved for small round auxiliary controls, never for
+primary actions.
+Borders are hairlines of glow color, never gray; cards carry an inner top
+highlight (1px warm white at 70%) so cream surfaces read as physical. The logo
+tile is a rotated square (18px radius, honey-to-gold) that settles upright on
+hover — the single authored motion moment, joined only by the form's staggered
+load-in cascade and the progress sheen.
 
 ## Components
 
-Warm and confident: soft glass, clear actions, nothing sharp.
+Warm and confident: cream surfaces, one emerald action, nothing sharp.
 
 ### Buttons
 - **Shape:** steady curve (18px radius), 16px × 20px padding, bold Cairo.
-- **Primary:** emerald gradient fill, deep-green ink text, action glow; lifts
-  on hover with a deeper glow.
-- **Hover / Focus:** translate up slightly; gold focus ring
-  (`outline: 2px solid gold, offset 2px`) for keyboard users.
-- **Secondary:** translucent emerald wash with glow border; hover deepens the
-  wash and swaps the border to emerald. Disabled buttons fade and wait
-  (`cursor: wait`).
+- **Primary:** emerald gradient fill (#34d399 → #6ee7b7), deep-green ink text,
+  action glow; lifts on hover with a deeper glow and presses back on `:active`.
+- **Hover / Focus:** translate up slightly; the emerald `focus-visible` ring
+  (`ring-4 ring-action/30`) is the only keyboard indicator.
+- **Secondary:** translucent emerald wash with an emerald-tinted border; hover
+  deepens the wash and the border. Disabled buttons fade and wait
+  (`cursor: wait`), and labels keep their drawn icon through a build.
 
 ### Cards / Containers
 - **Corner Style:** generous curve (32px radius).
-- **Background:** frosted deep-green glass (`blur(25px)`) with a faint gold
-  wash from the top.
-- **Shadow Strategy:** premium lift; see Elevation.
-- **Border:** 1px glow line.
+- **Background:** near-solid cream (`bg-card/95`) over the ambient paper wash.
+  No `backdrop-filter` on scrolling surfaces — blur costs frames and buys
+  nothing on an opaque paper canvas.
+- **Shadow Strategy:** soft warm lift; see Elevation.
+- **Border:** 1px glow line plus a 1px inner warm-white highlight.
 - **Internal Padding:** 40px (form card), 30px (status card).
 
 ### Inputs / Fields
-- **Style:** deep-green fill, 16px radius, 2px translucent gold border.
+- **Style:** white fill, 16px radius, 2px translucent gold border; hints sit
+  below in ink at 70% (AA on card).
 - **Focus:** border turns emerald with a soft emerald halo ring.
 - **Error / Disabled:** disabled fields fade to 45% with `not-allowed` cursor;
-  errors use the rose banner (translucent red fill, #ff6b6b text).
+  failed requests surface as an alert and the button returns to its idle label.
 - **Selects** render through token-styled proxy menus (button + listbox):
   hovered rows take an emerald wash, the chosen row is solid emerald with
   foam text; full keyboard support (arrows/enter/escape). The native select
   stays hidden in the DOM as the value source.
-- **Counters** pair emerald steppers with a bold centered value;
-  **checkboxes** tint emerald when checked.
+- **Counters** pair emerald steppers with a bold centered value and no native
+  spinners; **checkboxes** tint emerald when checked and sit in one bordered
+  block with hairline dividers.
+- **Slider** (reciter speed): 6px sand rail, 22px emerald thumb with a card
+  ring, emerald halo on keyboard focus, full-width 28px hit area.
 
 ### Progress + Player (signature components)
-- **Progress:** dark inset track, emerald gradient fill with a traveling sheen
-  while building, emerald percentage in extrabold numerals. A pulsing emerald
-  dot marks "working" and rests steady on done — motion with a resolved end.
-- **Loading:** while a job runs, the player stage shows a 9:16 skeleton with a
-  slow emerald shimmer, never a bare spinner.
-- **Player stage:** 9:16 framed card (24px radius, glow border) with native
-  video; below it a centered toolbar — round tool buttons, speed select, live
-  time label — then the download link.
+- **Progress:** sand inset track, emerald gradient fill with a traveling sheen
+  while building, emerald percentage in extrabold numerals (`aria-hidden`;
+  the track carries `role="progressbar"` and live `aria-valuenow`). A pulsing
+  emerald dot marks "working" and rests steady on done.
+- **Loading:** while a job runs, the player stage shows only a 9:16 skeleton
+  with a slow emerald shimmer, never a bare spinner and never a black void.
+- **Player stage:** hidden entirely until a real video exists, then a 9:16
+  framed card (24px radius, glow border) with native video controls as the one
+  playback surface (play, seek, volume, speed, fullscreen) and the download
+  button beneath it. No second toolbar duplicating native controls.
 - **Icons:** small glyphs are drawn inline SVG in one stroke family, never
   unicode symbols or emoji.
 
@@ -260,7 +290,7 @@ Warm and confident: soft glass, clear actions, nothing sharp.
 - **Do** let emerald own every action and gold own every brand moment
   (The Two Lights Rule).
 - **Do** keep Amiri to the logo and card titles; everything else is Cairo.
-- **Do** give keyboard focus the gold ring on every interactive element.
+- **Do** give keyboard focus the emerald ring on every interactive element.
 - **Do** pair every color-coded state with text or an icon, never color alone.
 - **Do** keep body text at 4.5:1 or better — verify computed pairs, not intent.
 
@@ -270,5 +300,6 @@ Warm and confident: soft glass, clear actions, nothing sharp.
 - **Don't** spend the primary emerald on decoration or the gold on buttons.
 - **Don't** add a third typeface, a modal, or a nested card to solve a layout.
 - **Don't** use unicode glyphs or emoji as icons; draw one SVG stroke family.
+- **Don't** animate decoration forever; every motion answers a state change.
 - **Don't** ship a new screen that the live panel cannot render from these
   tokens — extend the system instead.

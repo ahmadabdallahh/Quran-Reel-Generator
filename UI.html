@@ -11,10 +11,14 @@
     <style type="text/tailwindcss">
         @theme {
             --color-paper: #f4f1e8;
+            --color-paperdeep: #e7e1cf;
             --color-card: #fffdf6;
             --color-ink: #1d2b23;
             --color-action: #0c6e47;
+            --color-actionink: #052e1f;
             --color-mint: #34d399;
+            --color-mintlight: #6ee7b7;
+            --color-track: #e0d9c2;
             --color-gold: #8a5f16;
             --color-honey: #e8b64c;
             --color-term: #060a08;
@@ -28,96 +32,132 @@
 </head>
 
 <body
-    class="font-body bg-paper text-ink min-h-dvh leading-relaxed overflow-x-hidden relative bg-gradient-to-b from-paper to-[#e7e1cf]">
-    <div class="fixed inset-0 pointer-events-none z-[1]" id="particles"></div>
-
-    <header class="relative z-10 text-center px-5 pt-14 pb-5">
-        <h1 class="font-display text-4xl md:text-5xl font-bold text-gold mb-2">الريلز القرآنية (صدقة جارية)</h1>
-        <p class="text-lg text-ink/70 tracking-[4px] uppercase font-light">Quran Reels Generator Pro</p>
+    class="font-body bg-paper text-ink min-h-dvh leading-relaxed overflow-x-hidden relative bg-gradient-to-b from-paper to-paperdeep">
+    <header class="relative z-10 px-5 pt-12 pb-6">
+        <div class="mx-auto flex max-w-[900px] items-center justify-center gap-4">
+            <span class="logo-tile" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 6.5C10.4 5.2 8.4 4.6 6 4.6c-.9 0-1.6.1-2 .2v13.4c.4-.1 1.1-.2 2-.2 2.4 0 4.4.6 6 1.9" />
+                    <path d="M12 6.5c1.6-1.3 3.6-1.9 6-1.9.9 0 1.6.1 2 .2v13.4c-.4-.1-1.1-.2-2-.2-2.4 0-4.4.6-6 1.9" />
+                    <path d="M12 6.5v13.4" />
+                </svg>
+            </span>
+            <div class="text-right">
+                <h1 class="font-display text-3xl sm:text-4xl md:text-5xl font-bold text-gold leading-[1.15]">الريلز القرآنية</h1>
+                <p class="mt-1 text-sm font-semibold tracking-[0.18em] text-ink/70">صدقة جارية</p>
+            </div>
+        </div>
+        <p class="mx-auto mt-5 max-w-[34ch] text-center text-base text-ink/70">فيديو قرآني متزامن في دقيقة، بدون
+            مونتاج</p>
     </header>
 
-    <main class="relative z-10 max-w-[900px] mx-auto px-5 py-10 grid gap-8">
-        <div
-            class="relative overflow-hidden rounded-[32px] border border-gold/30 bg-card/80 backdrop-blur-xl p-6 md:p-10 shadow-[0_20px_50px_rgba(74,60,25,0.16),inset_0_1px_0_rgba(255,255,255,0.7)]">
-            <h2 class="font-display text-2xl md:text-3xl text-gold text-center mb-10">إعداد الفيديو</h2>
-            <form id="generatorForm" class="form-grid grid md:grid-cols-2 gap-6">
-                <div class="col-span-full">
-                    <label class="flex items-center gap-2.5 mb-3 text-ink/80 text-base font-semibold">
-                        <svg class="w-5 h-5 fill-action shrink-0" viewBox="0 0 24 24">
-                            <path
-                                d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-                        </svg>
-                        اسمك (اختياري)
-                    </label>
-                    <input type="text" id="personName" placeholder="اكتب اسمك هنا" maxlength="50"
-                        class="w-full rounded-2xl border-2 border-gold/25 bg-white px-5 py-[15px] text-ink transition hover:border-gold/50 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none" />
+    <main class="relative z-10 max-w-[900px] mx-auto px-5 pb-16 grid gap-8">
+        <section
+            class="relative rounded-[32px] border border-gold/30 bg-card/95 p-6 md:p-10 shadow-[0_20px_50px_rgba(74,60,25,0.16),inset_0_1px_0_rgba(255,255,255,0.7)]">
+            <div class="text-center">
+                <h2 class="font-display text-2xl md:text-3xl text-gold">إعداد الفيديو</h2>
+                <p class="mt-2 text-[0.95rem] text-ink/70">اختر التلاوة ونطاق الآيات، ثم حدّد الشكل</p>
+                <span class="mx-auto mt-4 block h-px w-16 bg-gold/40"></span>
+            </div>
+
+            <form id="generatorForm" class="form-grid mt-8 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-7">
+                <div class="col-span-full flex items-center gap-3">
+                    <h3 class="shrink-0 text-[0.95rem] font-bold text-gold">المحتوى والتلاوة</h3>
+                    <span class="h-px flex-1 bg-gradient-to-l from-gold/35 via-gold/15 to-transparent"></span>
                 </div>
 
-                <div class="col-span-full">
-                    <label class="flex items-center gap-2.5 mb-3 text-ink/80 text-base font-semibold">
-                        <svg class="w-5 h-5 fill-action shrink-0" viewBox="0 0 24 24">
-                            <path
-                                d="M9.93 13.5h4.14L12 7.98zM20 2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-4.05 16.5l-1.14-3H9.17l-1.12 3H5.96l5.11-13h1.86l5.11 13h-2.09z" />
-                        </svg>
-                        اختر القارئ
-                    </label>
+                <div>
+                    <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80" for="personName">اسمك
+                        (اختياري)</label>
+                    <input type="text" id="personName" placeholder="اكتب اسمك هنا" maxlength="50"
+                        class="w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition placeholder:text-ink/70 hover:border-gold/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none" />
+                </div>
+
+                <div>
+                    <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80" for="reciterSelect">اختر
+                        القارئ</label>
                     <select id="reciterSelect"
-                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-5 py-[15px] text-ink transition cursor-pointer hover:border-gold/50 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none disabled:opacity-45 disabled:cursor-not-allowed">
+                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer hover:border-gold/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none disabled:opacity-45 disabled:cursor-not-allowed">
                         <option value="">جاري تحميل القراء...</option>
                     </select>
                 </div>
 
                 <div class="col-span-full">
-                    <label class="flex items-center gap-2.5 mb-3 text-ink/80 text-base font-semibold">
-                        <svg class="w-5 h-5 fill-action shrink-0" viewBox="0 0 24 24">
-                            <path
-                                d="M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-4.05 16.5l-1.14-3H9.17l-1.12 3H5.96l5.11-13h1.86l5.11 13h-2.09z" />
-                        </svg>
-                        السورة الكريمة
-                    </label>
+                    <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80" for="surahSearch">السورة
+                        الكريمة</label>
                     <input type="text" id="surahSearch" placeholder="ابحث عن السورة..."
-                        class="w-full rounded-2xl border-2 border-gold/25 bg-white px-5 py-[15px] text-ink transition mb-2.5 hover:border-gold/50 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none" />
+                        class="mb-2.5 w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition placeholder:text-ink/70 hover:border-gold/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none" />
                     <select id="surahSelect"
-                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-5 py-[15px] text-ink transition cursor-pointer hover:border-gold/50 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none"></select>
+                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer hover:border-gold/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none"></select>
+                </div>
+
+                <div class="col-span-full flex items-center gap-3 pt-1">
+                    <h3 class="shrink-0 text-[0.95rem] font-bold text-gold">نطاق الآيات</h3>
+                    <span class="h-px flex-1 bg-gradient-to-l from-gold/35 via-gold/15 to-transparent"></span>
                 </div>
 
                 <div>
-                    <label class="flex items-center gap-2.5 mb-3 text-ink/80 text-base font-semibold">آية
+                    <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80" for="startAyah">آية
                         البداية</label>
-                    <div class="flex items-center rounded-2xl border-2 border-gold/25 bg-white overflow-hidden">
+                    <div
+                        class="flex items-center overflow-hidden rounded-2xl border-2 border-gold/25 bg-white transition focus-within:border-action focus-within:ring-4 focus-within:ring-action/20">
                         <button type="button"
-                            class="counter-btn w-[45px] h-[45px] text-action text-2xl flex items-center justify-center transition hover:bg-action/10 active:scale-95 focus-visible:bg-action/20 focus-visible:outline-none"
-                            data-type="minus" data-target="startAyah">−</button>
+                            class="counter-btn w-12 h-12 shrink-0 text-action text-xl flex items-center justify-center transition hover:bg-action/10 active:scale-95 focus-visible:bg-action/15 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-action focus-visible:outline-none"
+                            data-type="minus" data-target="startAyah" aria-label="إنقاص آية البداية">−</button>
                         <input type="number" id="startAyah"
-                            class="counter-input flex-1 bg-transparent text-center text-ink text-lg font-bold focus-visible:ring-2 focus-visible:ring-action/30 focus-visible:focus-visible:rounded-md"
-                            value="1" min="1" max="286">
+                            class="counter-input flex-1 min-w-0 bg-transparent text-center text-ink text-lg font-bold focus-visible:outline-none"
+                            value="1" min="1" max="286" />
                         <button type="button"
-                            class="counter-btn w-[45px] h-[45px] text-action text-2xl flex items-center justify-center transition hover:bg-action/10 active:scale-95 focus-visible:bg-action/20 focus-visible:outline-none"
-                            data-type="plus" data-target="startAyah">+</button>
+                            class="counter-btn w-12 h-12 shrink-0 text-action text-xl flex items-center justify-center transition hover:bg-action/10 active:scale-95 focus-visible:bg-action/15 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-action focus-visible:outline-none"
+                            data-type="plus" data-target="startAyah" aria-label="زيادة آية البداية">+</button>
                     </div>
                 </div>
 
                 <div>
-                    <label class="flex items-center gap-2.5 mb-3 text-ink/80 text-base font-semibold">آية
+                    <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80" for="endAyah">آية
                         النهاية</label>
-                    <div class="flex items-center rounded-2xl border-2 border-gold/25 bg-white overflow-hidden">
+                    <div
+                        class="flex items-center overflow-hidden rounded-2xl border-2 border-gold/25 bg-white transition focus-within:border-action focus-within:ring-4 focus-within:ring-action/20">
                         <button type="button"
-                            class="counter-btn w-[45px] h-[45px] text-action text-2xl flex items-center justify-center transition hover:bg-action/10 active:scale-95 focus-visible:bg-action/20 focus-visible:outline-none"
-                            data-type="minus" data-target="endAyah">−</button>
+                            class="counter-btn w-12 h-12 shrink-0 text-action text-xl flex items-center justify-center transition hover:bg-action/10 active:scale-95 focus-visible:bg-action/15 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-action focus-visible:outline-none"
+                            data-type="minus" data-target="endAyah" aria-label="إنقاص آية النهاية">−</button>
                         <input type="number" id="endAyah"
-                            class="counter-input flex-1 bg-transparent text-center text-ink text-lg font-bold focus-visible:ring-2 focus-visible:ring-action/30 focus-visible:focus-visible:rounded-md"
-                            value="7" min="1" max="286">
+                            class="counter-input flex-1 min-w-0 bg-transparent text-center text-ink text-lg font-bold focus-visible:outline-none"
+                            value="7" min="1" max="286" />
                         <button type="button"
-                            class="counter-btn w-[45px] h-[45px] text-action text-2xl flex items-center justify-center transition hover:bg-action/10 active:scale-95 focus-visible:bg-action/20 focus-visible:outline-none"
-                            data-type="plus" data-target="endAyah">+</button>
+                            class="counter-btn w-12 h-12 shrink-0 text-action text-xl flex items-center justify-center transition hover:bg-action/10 active:scale-95 focus-visible:bg-action/15 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-action focus-visible:outline-none"
+                            data-type="plus" data-target="endAyah" aria-label="زيادة آية النهاية">+</button>
                     </div>
                 </div>
 
                 <div>
-                    <label class="flex items-center gap-2.5 mb-3 text-ink/80 text-base font-semibold">جودة
+                    <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80"
+                        for="targetDurationInput">الحد الأقصى للمدة (ثوانٍ)</label>
+                    <input type="number" id="targetDurationInput" min="0" step="1" placeholder="بدون حد"
+                        class="w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition placeholder:text-ink/70 hover:border-gold/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none" />
+                    <p class="mt-1.5 text-[0.85rem] text-ink/70">اتركه فارغاً لاستخدام كل الآيات المحددة</p>
+                </div>
+
+                <div>
+                    <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80"
+                        for="reciterSpeedInput">سرعة التلاوة (<span id="reciterSpeedValue">1.00</span>×)</label>
+                    <input type="range" id="reciterSpeedInput" min="0.5" max="2.0" step="0.05" value="1.0"
+                        class="range mt-3" />
+                    <p class="mt-1.5 text-[0.85rem] text-ink/70">0.5× أبطأ، 1.0× عادي، 2.0× أسرع (بدون تغيير النبرة)
+                    </p>
+                </div>
+
+                <div class="col-span-full flex items-center gap-3 pt-1">
+                    <h3 class="shrink-0 text-[0.95rem] font-bold text-gold">الإخراج البصري</h3>
+                    <span class="h-px flex-1 bg-gradient-to-l from-gold/35 via-gold/15 to-transparent"></span>
+                </div>
+
+                <div>
+                    <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80" for="qualitySelect">جودة
                         الفيديو</label>
                     <select id="qualitySelect"
-                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-5 py-[15px] text-ink transition cursor-pointer hover:border-gold/50 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none">
+                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer hover:border-gold/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none">
                         <option value="low">منخفضة (سريع)</option>
                         <option value="medium" selected>مـتوسطة</option>
                         <option value="high">عــالية (بطيء)</option>
@@ -125,10 +165,10 @@
                 </div>
 
                 <div>
-                    <label class="flex items-center gap-2.5 mb-3 text-ink/80 text-base font-semibold">القالب
+                    <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80" for="templateSelect">القالب
                         البصري</label>
                     <select id="templateSelect"
-                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-5 py-[15px] text-ink transition cursor-pointer hover:border-gold/50 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none">
+                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer hover:border-gold/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none">
                         <option value="normal" selected>افتراضي (طبيعة)</option>
                         <option value="ramadan">رمضاني (ذهبي)</option>
                         <option value="masjid">مساجد وصلاة</option>
@@ -136,75 +176,11 @@
                     </select>
                 </div>
 
-                <div class="col-span-full">
-                    <label
-                        class="flex items-center gap-2.5 py-2 cursor-pointer select-none text-ink/80 text-base font-semibold"
-                        for="bismillahCheckbox">
-                        <input type="checkbox" id="bismillahCheckbox" checked
-                            class="w-[18px] h-[18px] accent-action cursor-pointer focus-visible:ring-2 focus-visible:ring-action/40 focus-visible:outline-none" />
-                        <span class="flex-1 text-right">بدء الفيديو بالبسملة (بِسْمِ اللَّهِ الرَّحْمَٰنِ
-                            الرَّحِيمِ)</span>
-                    </label>
-                    <p class="mt-1.5 text-[0.85rem] text-ink/60 text-right">يتم تلقائياً تخطي سورتي الفاتحة والتوبة</p>
-                </div>
-
-                <div class="col-span-full">
-                    <label
-                        class="flex items-center gap-2.5 py-2 cursor-pointer select-none text-ink/80 text-base font-semibold"
-                        for="showTextCheckbox">
-                        <input type="checkbox" id="showTextCheckbox" checked
-                            class="w-[18px] h-[18px] accent-action cursor-pointer focus-visible:ring-2 focus-visible:ring-action/40 focus-visible:outline-none" />
-                        <span class="flex-1 text-right">إظهار نص الآية أثناء التلاوة</span>
-                    </label>
-                    <p class="mt-1.5 text-[0.85rem] text-ink/60 text-right">يعرض نص الآية الحالية على الفيديو أثناء
-                        قراءتها</p>
-                </div>
-
-                <div class="col-span-full">
-                    <label
-                        class="flex items-center gap-2.5 py-2 cursor-pointer select-none text-ink/80 text-base font-semibold"
-                        for="highlightWordsCheckbox">
-                        <input type="checkbox" id="highlightWordsCheckbox" disabled
-                            class="w-[18px] h-[18px] accent-action cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-action/40 focus-visible:outline-none" />
-                        <span class="flex-1 text-right">تظليل الكلمات مع التلاوة (تجريبي)</span>
-                    </label>
-                    <p class="mt-1.5 text-[0.85rem] text-ink/60 text-right">يضيء كل كلمة أثناء نطقها (يتطلب تفعيل إظهار
-                        النص)</p>
-                </div>
-
                 <div>
-                    <label class="flex items-center gap-2.5 mb-3 text-ink/80 text-base font-semibold"
-                        for="textPositionSelect">موضع نص الآية</label>
-                    <select id="textPositionSelect"
-                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-5 py-[15px] text-ink transition cursor-pointer hover:border-gold/50 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none disabled:opacity-45 disabled:cursor-not-allowed">
-                        <option value="lower" selected>أسفل الفيديو</option>
-                        <option value="middle">وسط الفيديو</option>
-                    </select>
-                    <p class="mt-1.5 text-[0.85rem] text-ink/60 text-right">مكان ظهور نص الآية على الفيديو</p>
-                </div>
-
-                <div>
-                    <label class="flex items-center gap-2.5 mb-3 text-ink/80 text-base font-semibold"
-                        for="targetDurationInput">الحد الأقصى لمدة الفيديو (ثوانٍ)</label>
-                    <input type="number" id="targetDurationInput" min="0" step="1" placeholder="بدون حد"
-                        class="w-full rounded-2xl border-2 border-gold/25 bg-white px-5 py-[15px] text-ink transition hover:border-gold/50 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none" />
-                    <p class="mt-1.5 text-[0.85rem] text-ink/60 text-right">اتركه فارغاً لاستخدام كل الآيات المحددة</p>
-                </div>
-
-                <div>
-                    <label class="flex items-center gap-2.5 mb-3 text-ink/80 text-base font-semibold"
-                        for="reciterSpeedInput">سرعة التلاوة (<span id="reciterSpeedValue">1.00</span>×)</label>
-                    <input type="range" id="reciterSpeedInput" min="0.5" max="2.0" step="0.05" value="1.0"
-                        class="w-full accent-action cursor-pointer focus-visible:ring-2 focus-visible:ring-action/40 focus-visible:outline-none" />
-                    <p class="mt-1.5 text-[0.85rem] text-ink/60 text-right">0.5× أبطأ، 1.0× عادي، 2.0× أسرع (بدون تغيير
-                        النبرة)</p>
-                </div>
-
-                <div>
-                    <label class="flex items-center gap-2.5 mb-3 text-ink/80 text-base font-semibold"
+                    <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80"
                         for="transitionStyleSelect">أسلوب الانتقال بين الآيات</label>
                     <select id="transitionStyleSelect"
-                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-5 py-[15px] text-ink transition cursor-pointer hover:border-gold/50 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none">
+                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer hover:border-gold/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none">
                         <option value="" selected>افتراضي (حسب القالب)</option>
                         <option value="cinematic">سينمائي: قطع حاد (بدون تداخل)</option>
                         <option value="dynamic">متحرك: تداخل (xfade) بين كل آية</option>
@@ -213,98 +189,139 @@
                     </select>
                 </div>
 
-                <div class="col-span-full">
-                    <label class="flex items-center gap-2.5 mb-3 text-ink/80 text-base font-semibold">تنسيق
+                <div>
+                    <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80" for="formatSelect">تنسيق
                         الفيديو</label>
                     <select id="formatSelect"
-                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-5 py-[15px] text-ink transition cursor-pointer hover:border-gold/50 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none">
+                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer hover:border-gold/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none">
                         <option value="reels" selected>Instagram Reels / TikTok (9:16)</option>
                         <option value="story">Instagram Story (9:16)</option>
                         <option value="post">Square Post (1:1)</option>
                     </select>
                 </div>
 
-                <div class="col-span-full grid grid-cols-[1fr_2fr] gap-4 mt-8">
+                <div class="col-span-full">
+                    <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80"
+                        for="textPositionSelect">موضع نص الآية</label>
+                    <select id="textPositionSelect"
+                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer hover:border-gold/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none disabled:opacity-45 disabled:cursor-not-allowed"
+                        disabled>
+                        <option value="lower" selected>أسفل الفيديو</option>
+                        <option value="middle">وسط الفيديو</option>
+                    </select>
+                    <p class="mt-1.5 text-[0.85rem] text-ink/70">مكان ظهور نص الآية على الفيديو</p>
+                </div>
+
+                <div class="col-span-full flex items-center gap-3 pt-1">
+                    <h3 class="shrink-0 text-[0.95rem] font-bold text-gold">خيارات إضافية</h3>
+                    <span class="h-px flex-1 bg-gradient-to-l from-gold/35 via-gold/15 to-transparent"></span>
+                </div>
+
+                <div
+                    class="col-span-full divide-y divide-gold/15 overflow-hidden rounded-2xl border-2 border-gold/20 bg-white/60">
+                    <label class="flex items-start gap-3 px-4 py-4 cursor-pointer select-none transition hover:bg-action/5"
+                        for="bismillahCheckbox">
+                        <input type="checkbox" id="bismillahCheckbox" checked
+                            class="mt-0.5 w-5 h-5 shrink-0 rounded accent-action cursor-pointer focus-visible:ring-2 focus-visible:ring-action/40 focus-visible:outline-none" />
+                        <span class="flex-1">
+                            <span class="block text-[0.95rem] font-semibold text-ink/85">بدء الفيديو بالبسملة</span>
+                            <span class="mt-1 block text-[0.85rem] text-ink/70">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ،
+                                ويتم تلقائياً تخطي سورتي الفاتحة والتوبة</span>
+                        </span>
+                    </label>
+
+                    <label class="flex items-start gap-3 px-4 py-4 cursor-pointer select-none transition hover:bg-action/5"
+                        for="showTextCheckbox">
+                        <input type="checkbox" id="showTextCheckbox" checked
+                            class="mt-0.5 w-5 h-5 shrink-0 rounded accent-action cursor-pointer focus-visible:ring-2 focus-visible:ring-action/40 focus-visible:outline-none" />
+                        <span class="flex-1">
+                            <span class="block text-[0.95rem] font-semibold text-ink/85">إظهار نص الآية أثناء
+                                التلاوة</span>
+                            <span class="mt-1 block text-[0.85rem] text-ink/70">يعرض نص الآية الحالية على الفيديو
+                                أثناء قراءتها</span>
+                        </span>
+                    </label>
+
+                    <label class="flex items-start gap-3 px-4 py-4 cursor-pointer select-none transition hover:bg-action/5"
+                        for="highlightWordsCheckbox">
+                        <input type="checkbox" id="highlightWordsCheckbox" disabled
+                            class="mt-0.5 w-5 h-5 shrink-0 rounded accent-action cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-action/40 focus-visible:outline-none" />
+                        <span class="flex-1">
+                            <span class="block text-[0.95rem] font-semibold text-ink/85">تظليل الكلمات مع التلاوة
+                                (تجريبي)</span>
+                            <span class="mt-1 block text-[0.85rem] text-ink/70">يضيء كل كلمة أثناء نطقها (يتطلب تفعيل
+                                إظهار النص)</span>
+                        </span>
+                    </label>
+                </div>
+
+                <div class="col-span-full grid gap-3 pt-3 sm:grid-cols-[1fr_1.6fr]">
                     <button type="button" id="previewBtn"
-                        class="flex items-center justify-center gap-3 rounded-[18px] px-5 py-4 text-lg font-bold text-ink border-2 border-gold/30 bg-ink/5 transition hover:border-action hover:bg-action/10 active:translate-y-0 active:scale-[0.98] disabled:opacity-55 disabled:cursor-wait focus-visible:ring-4 focus-visible:ring-action/30 focus-visible:outline-none">
-                        <svg class="w-6 h-6" viewBox="0 0 24 24">
-                            <path
-                                d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"
-                                fill="currentColor" />
+                        class="flex items-center justify-center gap-3 rounded-[18px] border-2 border-action/25 bg-action/5 px-5 py-4 text-lg font-bold text-ink transition hover:border-action/50 hover:bg-action/10 active:scale-[0.99] disabled:opacity-55 disabled:cursor-wait focus-visible:ring-4 focus-visible:ring-action/30 focus-visible:outline-none">
+                        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z" />
+                            <circle cx="12" cy="12" r="3" />
                         </svg>
                         معاينة
                     </button>
                     <button type="submit" id="generateBtn"
-                        class="flex items-center justify-center gap-3 rounded-[18px] px-5 py-4 text-lg font-bold text-[#052e1f] bg-gradient-to-br from-mint to-[#6ee7b7] shadow-[0_10px_30px_rgba(12,110,71,0.25)] transition hover:-translate-y-1 active:translate-y-0 active:scale-[0.98] disabled:opacity-55 disabled:cursor-wait focus-visible:ring-4 focus-visible:ring-action/30 focus-visible:outline-none">
-                        <svg class="w-6 h-6" viewBox="0 0 24 24">
+                        class="flex items-center justify-center gap-3 rounded-[18px] bg-gradient-to-br from-mint to-mintlight px-5 py-4 text-lg font-bold text-actionink shadow-[0_10px_30px_rgba(12,110,71,0.26)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(12,110,71,0.32)] active:translate-y-0 active:scale-[0.99] disabled:opacity-55 disabled:cursor-wait focus-visible:ring-4 focus-visible:ring-action/30 focus-visible:outline-none">
+                        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <path
-                                d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"
-                                fill="currentColor" />
+                                d="M4 6.5A1.5 1.5 0 0 1 5.5 5H16a1.5 1.5 0 0 1 1.5 1.5v11A1.5 1.5 0 0 1 16 19H5.5A1.5 1.5 0 0 1 4 17.5Z" />
+                            <path d="m17.5 10.5 3-2v7l-3-2" />
                         </svg>
                         إنشاء الفيديو
                     </button>
                 </div>
             </form>
-        </div>
+        </section>
 
-        <div id="statusCard"
-            class="status-card relative overflow-hidden rounded-3xl border border-gold/30 bg-card/80 backdrop-blur-xl p-6 md:p-8 mt-10 shadow-[0_20px_50px_rgba(74,60,25,0.16)]">
-            <div class="flex justify-between items-center mb-5">
-                <div class="flex items-center gap-2.5">
+        <section id="statusCard"
+            class="status-card relative rounded-[32px] border border-gold/30 bg-card/95 p-6 md:p-8 shadow-[0_20px_50px_rgba(74,60,25,0.16)]">
+            <div class="flex items-center justify-between gap-4 mb-5">
+                <div class="flex items-center gap-2.5 min-w-0">
                     <span id="liveDot" class="live-dot" aria-hidden="true"></span>
-                    <h4 id="statusText" class="text-ink/80 text-lg">جاري التحضير...</h4>
+                    <h3 class="truncate text-ink/80 text-lg"><span id="statusText" role="status"
+                            aria-live="polite">جاري التحضير...</span></h3>
                 </div>
-                <div class="text-3xl font-extrabold text-action" id="progressPercent">0%</div>
+                <div class="text-3xl font-extrabold text-action tabular-nums" id="progressPercent" aria-hidden="true">
+                    0%</div>
             </div>
-            <div
-                class="w-full h-[14px] bg-[#e0d9c2] rounded-full overflow-hidden mb-6 shadow-[inset_0_2px_5px_rgba(0,0,0,0.2)]">
+            <div class="mb-6 h-3.5 w-full overflow-hidden rounded-full bg-track shadow-[inset_0_2px_5px_rgba(0,0,0,0.18)]"
+                role="progressbar" aria-label="نسبة إنجاز الفيديو" aria-valuemin="0" aria-valuemax="100"
+                aria-valuenow="0" id="progressTrack">
                 <div id="progressFill"
-                    class="progress-bar h-full w-0 rounded-full bg-gradient-to-r from-action via-mint to-[#6ee7b7] transition-[width] duration-500">
+                    class="progress-bar h-full w-0 rounded-full bg-gradient-to-r from-action via-mint to-mintlight transition-[width] duration-500">
                 </div>
             </div>
-            <div class="rounded-xl bg-[#060a08] p-5 text-sm max-h-[250px] overflow-y-auto border border-honey/20 log-terminal"
-                id="logTerminal">
-                <div class="log-line">> <span>بانتظار بدء المهمة...</span></div>
+            <div id="logTerminal"
+                class="log-terminal max-h-[250px] overflow-y-auto rounded-xl border border-honey/20 bg-term p-4 text-sm">
+                <div class="log-line">&gt; <span>بانتظار بدء المهمة...</span></div>
             </div>
+
             <div id="videoPreviewWrapper" class="video-preview-wrapper mt-8">
                 <div id="previewSkeleton"
-                    class="player-skeleton aspect-[9/16] max-w-[350px] mx-auto rounded-3xl border border-gold/30"
+                    class="player-skeleton mx-auto aspect-[9/16] max-w-[350px] rounded-3xl border border-gold/30"
                     hidden></div>
-                <div
-                    class="rounded-3xl overflow-hidden relative aspect-[9/16] max-w-[350px] mx-auto border-[3px] border-gold/30 bg-black shadow-[0_30px_60px_rgba(0,0,0,0.35)]">
-                    <video id="previewVideo" class="w-full h-full object-cover block" controls preload="metadata"
+
+                <div id="playerFrame"
+                    class="player-frame relative mx-auto aspect-[9/16] max-w-[350px] overflow-hidden rounded-3xl border-[3px] border-gold/30 bg-term shadow-[0_30px_60px_rgba(0,0,0,0.35)]">
+                    <video id="previewVideo" class="block h-full w-full object-cover" controls preload="metadata"
                         playsinline controlsList="nodownload" disablepictureinpicture>
                         <p>متصفحك لا يدعم تشغيل الفيديو.</p>
                     </video>
                 </div>
-                <div class="flex items-center justify-center gap-2.5 mt-3.5">
-                    <button type="button" id="playPauseBtn" title="تشغيل / إيقاف" aria-label="تشغيل / إيقاف"
-                        class="tool-btn w-[42px] h-[42px] rounded-full border border-gold/30 bg-action/10 text-ink text-base flex items-center justify-center transition hover:bg-action/20 active:scale-95 focus-visible:ring-4 focus-visible:ring-action/30 focus-visible:outline-none"><svg
-                            viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M8 5v14l11-7z" />
-                        </svg></button>
-                    <select id="speedSelect" title="سرعة التشغيل"
-                        class="rounded-xl border border-gold/30 bg-ink/5 text-ink px-2.5 py-2 cursor-pointer focus-visible:ring-4 focus-visible:ring-action/30 focus-visible:outline-none">
-                        <option value="0.5">0.5×</option>
-                        <option value="1" selected>1×</option>
-                        <option value="1.5">1.5×</option>
-                        <option value="2">2×</option>
-                    </select>
-                    <button type="button" id="fullscreenBtn" title="ملء الشاشة" aria-label="ملء الشاشة"
-                        class="tool-btn w-[42px] h-[42px] rounded-full border border-gold/30 bg-action/10 text-ink text-base flex items-center justify-center transition hover:bg-action/20 active:scale-95 focus-visible:ring-4 focus-visible:ring-action/30 focus-visible:outline-none"><svg
-                            viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor"
-                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                        </svg></button>
-                    <span id="timeLabel" class="text-[13px] opacity-80 min-w-[90px] text-center">0:00 / 0:00</span>
-                </div>
-                <div class="text-center mt-4">
+
+                <div class="player-download mt-5 text-center">
                     <a id="downloadLink" href="#"
-                        class="inline-flex items-center justify-center gap-3 rounded-[18px] px-6 py-2.5 text-lg font-bold text-[#052e1f] bg-gradient-to-br from-mint to-[#6ee7b7] no-underline transition hover:-translate-y-1 active:scale-[0.98] focus-visible:ring-4 focus-visible:ring-action/30 focus-visible:outline-none"
+                        class="inline-flex items-center justify-center gap-2.5 rounded-[18px] bg-gradient-to-br from-mint to-mintlight px-6 py-3 text-lg font-bold text-actionink no-underline shadow-[0_10px_30px_rgba(12,110,71,0.26)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(12,110,71,0.32)] active:scale-[0.99] focus-visible:ring-4 focus-visible:ring-action/30 focus-visible:outline-none"
                         download>تحميل الفيديو</a>
                 </div>
             </div>
-        </div>
+        </section>
     </main>
 
     <script src="main.js"></script>
