@@ -16,8 +16,8 @@
             --color-paperdeep: #e7e1cf;
             --color-card: #fffdf6;
             --color-ink: #1d2b23;
-            --color-action: #0c6e47;
-            --color-actionink: #052e1f;
+            --color-action: #6e4a10;
+            --color-actionink: #1d2b23;
             --color-mint: #34d399;
             --color-mintlight: #6ee7b7;
             --color-track: #e0d9c2;
@@ -27,8 +27,8 @@
             --color-foam: #f7f4ea;
             --color-sand: #efe9d6;
             --color-golddeep: #6e4a10;
-            /* Interaction surfaces derived from the action emerald so hover,
-               focus and highlight states stay in one hue family. */
+            /* Interaction surfaces derive from the existing deep-gold action
+               token so hover, focus and highlight states stay in the palette. */
             --color-tint-soft: color-mix(in srgb, var(--color-action) 7%, var(--color-card));
             --color-tint: color-mix(in srgb, var(--color-action) 15%, var(--color-card));
             --color-tint-strong: color-mix(in srgb, var(--color-action) 26%, var(--color-card));
@@ -204,6 +204,7 @@
                         <option value="reels" selected>Instagram Reels / TikTok (9:16)</option>
                         <option value="story">Instagram Story (9:16)</option>
                         <option value="post">Square Post (1:1)</option>
+                        <option value="youtube">YouTube (16:9)</option>
                     </select>
                 </div>
 
@@ -228,12 +229,11 @@
                     class="col-span-full divide-y divide-gold/15 overflow-hidden rounded-2xl border-2 border-gold/20 bg-white/60">
                     <label class="flex items-start gap-3 px-4 py-4 cursor-pointer select-none transition hover:bg-tint"
                         for="bismillahCheckbox">
-                        <input type="checkbox" id="bismillahCheckbox" checked
+                        <input type="checkbox" id="bismillahCheckbox"
                             class="mt-0.5 w-5 h-5 shrink-0 rounded accent-action cursor-pointer focus-visible:ring-2 focus-visible:ring-action/40 focus-visible:outline-none" />
                         <span class="flex-1">
-                            <span class="block text-[0.95rem] font-semibold text-ink/85">بدء الفيديو بالبسملة</span>
-                            <span class="mt-1 block text-[0.85rem] text-ink/70">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ،
-                                ويتم تلقائياً تخطي سورتي الفاتحة والتوبة</span>
+                            <span class="block text-[0.95rem] font-semibold text-ink/85">إظهار البسملة كافتتاح بصري</span>
+                            <span class="mt-1 block text-[0.85rem] text-ink/70">تظهر على أول 1.8 ثانية من صوت الآية الأولى دون إضافة صمت، ولا تُعد مزامنة صوتية. لا تُضاف للفاتحة أو التوبة.</span>
                         </span>
                     </label>
 
@@ -256,8 +256,7 @@
                         <span class="flex-1">
                             <span class="block text-[0.95rem] font-semibold text-ink/85">تظليل الكلمات مع التلاوة
                                 (تجريبي)</span>
-                            <span class="mt-1 block text-[0.85rem] text-ink/70">يضيء كل كلمة أثناء نطقها (يتطلب تفعيل
-                                إظهار النص)</span>
+                            <span class="mt-1 block text-[0.85rem] text-ink/70">غير متاح حتى تتوفر توقيتات موثوقة للكلمات من مصدر التلاوة.</span>
                         </span>
                     </label>
                 </div>
@@ -273,7 +272,7 @@
                         معاينة
                     </button>
                     <button type="submit" id="generateBtn"
-                        class="flex items-center justify-center gap-3 rounded-[18px] bg-action px-5 py-4 text-lg font-bold text-foam shadow-[0_10px_30px_rgba(12,110,71,0.28)] transition hover:-translate-y-0.5 hover:bg-actionink hover:shadow-[0_16px_36px_rgba(5,46,31,0.30)] active:translate-y-0 active:scale-[0.99] disabled:opacity-55 disabled:cursor-wait focus-visible:ring-4 focus-visible:ring-action/30 focus-visible:outline-none">
+                        class="flex items-center justify-center gap-3 rounded-[18px] bg-action px-5 py-4 text-lg font-bold text-foam shadow-[0_10px_30px_rgba(110,74,16,0.24)] transition hover:-translate-y-0.5 hover:bg-actionink hover:shadow-[0_16px_36px_rgba(29,43,35,0.24)] active:translate-y-0 active:scale-[0.99] disabled:opacity-55 disabled:cursor-wait focus-visible:ring-4 focus-visible:ring-action/30 focus-visible:outline-none">
                         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
                             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <path
@@ -324,7 +323,7 @@
 
                 <div class="player-download mt-5 text-center">
                     <a id="downloadLink" href="#"
-                        class="inline-flex items-center justify-center gap-2.5 rounded-[18px] bg-action px-6 py-3 text-lg font-bold text-foam no-underline shadow-[0_10px_30px_rgba(12,110,71,0.28)] transition hover:-translate-y-0.5 hover:bg-actionink hover:shadow-[0_16px_36px_rgba(5,46,31,0.30)] active:scale-[0.99] focus-visible:ring-4 focus-visible:ring-action/30 focus-visible:outline-none"
+                        class="inline-flex items-center justify-center gap-2.5 rounded-[18px] bg-action px-6 py-3 text-lg font-bold text-foam no-underline shadow-[0_10px_30px_rgba(110,74,16,0.24)] transition hover:-translate-y-0.5 hover:bg-actionink hover:shadow-[0_16px_36px_rgba(29,43,35,0.24)] active:scale-[0.99] focus-visible:ring-4 focus-visible:ring-action/30 focus-visible:outline-none"
                         download>تحميل الفيديو</a>
                 </div>
             </div>

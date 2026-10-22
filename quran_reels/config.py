@@ -91,6 +91,7 @@ OUTPUT_FORMATS = {
     'reels': {'size': (1080, 1920), 'duration': 600},  # 10 mins
     'story': {'size': (1080, 1920), 'duration': 60},   # 1 min
     'post':  {'size': (1080, 1080), 'duration': 600},  # 10 mins
+    'youtube': {'size': (1920, 1080), 'duration': 600},  # 16:9 landscape
 }
 
 # =============================================================================
@@ -189,10 +190,15 @@ RECITERS_MAP = {
 # =============================================================================
 # Bismillah (Surah-opening invocation)
 # =============================================================================
-# Bismillah is recited at the start of every surah EXCEPT At-Tawbah (surah 9).
-# Al-Fatihah (surah 1) is skipped here because "Bismillah ..." is already
-# considered the first ayah of Al-Fatihah by most schools — prepending it
-# would duplicate.
+# The optional unsynchronized visual lead-in is skipped for At-Tawbah, which
+# has no opening Bismillah, and Al-Fatihah, whose first ayah contains it.
 
-BISMILLAH_DURATION_SEC = 1.8  # self-contained title card length
-BISMILLAH_SKIP_SURAHS = {1, 9}  # Al-Fatihah (Bismillah IS ayah 1) and At-Tawbah
+BISMILLAH_DURATION_SEC = 1.8  # visual-only lead-in over ayah audio
+BISMILLAH_SKIP_SURAHS = {1, 9}  # Al-Fatihah already includes it; At-Tawbah omits it
+
+
+def should_show_bismillah_visual(include_bismillah: bool, surah: int,
+                                  ayah: int) -> bool:
+    """Return whether an explicit visual-only opening applies to this ayah."""
+    return bool(include_bismillah and ayah == 1
+                and surah not in BISMILLAH_SKIP_SURAHS)

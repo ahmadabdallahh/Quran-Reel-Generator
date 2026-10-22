@@ -9,11 +9,11 @@
    utilities, so they read these two aliases instead of the theme variables.
    Values mirror --color-action / --color-actionink in UI.html. */
 :root {
-    --accent: #0c6e47;
-    --accent-ink: #052e1f;
+    --accent: var(--color-action);
+    --accent-ink: var(--color-actionink);
 }
 
-/* ----- Ambient background (warm paper, emerald + gold light; dot fill matches --color-gold, data-URIs cannot read var()) ----- */
+/* ----- Ambient background (warm paper with gold light; dot fill matches --color-gold, data-URIs cannot read var()) ----- */
 body::before {
     content: '';
     position: fixed;
@@ -73,7 +73,7 @@ header:focus-within .logo-tile {
    Tailwind layer, and the logical inset keeps it on the left in RTL. */
 select.sel {
     appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%230c6e47' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%236e4a10' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: left 1rem center;
     padding-inline-end: 2.75rem;
@@ -96,7 +96,7 @@ input[type='number'] {
     border-radius: 8px;
 }
 
-/* ----- Speed slider (token track + emerald thumb) ----- */
+/* ----- Speed slider (token track + action-color thumb) ----- */
 .range {
     -webkit-appearance: none;
     appearance: none;
@@ -125,7 +125,7 @@ input[type='number'] {
     border-radius: 50%;
     background: var(--accent);
     border: 3px solid var(--color-card);
-    box-shadow: 0 2px 8px rgba(12, 110, 71, 0.35);
+    box-shadow: 0 2px 8px rgba(110, 74, 16, 0.28);
     transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -140,7 +140,7 @@ input[type='number'] {
 .range:focus-visible::-webkit-slider-thumb {
     box-shadow:
         0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent),
-        0 2px 8px rgba(12, 110, 71, 0.35);
+        0 2px 8px rgba(110, 74, 16, 0.28);
 }
 
 .range::-moz-range-track {
@@ -161,7 +161,7 @@ input[type='number'] {
     border-radius: 50%;
     background: var(--accent);
     border: 3px solid var(--color-card);
-    box-shadow: 0 2px 8px rgba(12, 110, 71, 0.35);
+    box-shadow: 0 2px 8px rgba(110, 74, 16, 0.28);
 }
 
 .range:focus-visible::-moz-range-thumb {

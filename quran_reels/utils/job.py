@@ -37,15 +37,6 @@ class JobContext:
         from main import TEMP_DIR
         return os.path.join(TEMP_DIR, f"{self.job_id}_segment_{idx:03d}.mp4")
 
-    # ---- Bismillah ----
-    def bismillah_audio(self) -> str:
-        from main import TEMP_DIR
-        return os.path.join(TEMP_DIR, f"{self.job_id}_audio_000_bismillah.mp3")
-
-    def bismillah_segment(self) -> str:
-        from main import TEMP_DIR
-        return os.path.join(TEMP_DIR, f"{self.job_id}_segment_000_bismillah.mp4")
-
     # ---- concat / chunk / final-output paths ----
     def concat_list_path(self) -> str:
         from main import TEMP_DIR

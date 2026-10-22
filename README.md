@@ -27,9 +27,9 @@ flowchart LR
 
 | Feature | Plain words |
 |---|---|
-| Vertical video | 1080×1920 (9:16) for Reels/Story, plus 1:1 square posts |
+| Video formats | 9:16 Reels/Story, 1:1 square posts, and 16:9 YouTube |
 | Ayah text on screen | The exact verse being recited appears on the video, timed to its audio |
-| Word highlighting (experimental) | A gold spotlight moves word by word as it is recited |
+| Word highlighting | Unavailable until recitation sources provide verified word timestamps |
 | Text position | Bottom of the video, or centered in the middle |
 | 12+ reciters | AbdulBasit, Sudais, Minshawy, Shuraym, Husary, and more |
 | 4 visual themes | Ramadan, Normal, Masjid, Islamic — each picks its own backgrounds |
@@ -152,16 +152,18 @@ card with the video player on the other.
 4. **Start / End ayah** — the range to include. The app blocks impossible numbers.
 5. **Quality** — Low = fast draft, Medium = everyday use, High = best, slowest.
 6. **Visual theme** — Ramadan / Normal / Masjid / Islamic.
-7. **Bismillah card** — adds a silent title card first (auto-skipped for
-   Al-Fatihah and At-Tawbah).
+7. **Bismillah visual opening (optional)** — replaces the first 1.8 seconds
+   of ayah 1 text over its existing audio; it is not audio-synchronized and
+   is skipped for Al-Fatihah and At-Tawbah.
 8. **Show ayah text** — on by default. Off = plain background video, no text.
 9. **Text position** — bottom or middle of the screen (needs step 8 on).
-10. **Word highlighting** — experimental gold spotlight, word by word
-    (needs step 8 on).
+10. **Word highlighting** — currently unavailable because audio sources do
+    not provide verified word timestamps.
 11. **Max duration (optional)** — caps the video length; extra ayahs are dropped.
 12. **Recitation speed** — 0.5x slower … 2x faster, pitch unchanged.
 13. **Transition style** — how segments blend into each other.
-14. **Format** — Reels/TikTok (9:16), Story (9:16), or square Post (1:1).
+14. **Format** — Reels/TikTok (9:16), Story (9:16), square Post (1:1), or
+    YouTube (16:9).
 15. Press **Preview** for a quick one-ayah test, or **Generate Video** for the
     full range.
 

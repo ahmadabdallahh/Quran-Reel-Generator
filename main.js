@@ -41,7 +41,22 @@ const reciterSelect = document.getElementById('reciterSelect');
 const qualitySelect = document.getElementById('qualitySelect');
 const templateSelect = document.getElementById('templateSelect');
 const formatSelect = document.getElementById('formatSelect');
+const previewSkeleton = document.getElementById('previewSkeleton');
+const playerFrame = document.getElementById('playerFrame');
 const personNameInput = document.getElementById('personName');
+
+function syncPreviewAspect() {
+    const ratios = { reels: '9 / 16', story: '9 / 16', post: '1 / 1', youtube: '16 / 9' };
+    const ratio = ratios[formatSelect.value] || ratios.reels;
+    const maxWidth = formatSelect.value === 'youtube' ? '560px' : '350px';
+    [previewSkeleton, playerFrame].forEach((frame) => {
+        frame.style.aspectRatio = ratio;
+        frame.style.maxWidth = maxWidth;
+    });
+}
+
+formatSelect.addEventListener('change', syncPreviewAspect);
+syncPreviewAspect();
 
 
 
@@ -58,7 +73,6 @@ const logTerminal = document.getElementById('logTerminal');
 
 const videoPreviewWrapper = document.getElementById('videoPreviewWrapper');
 const previewVideo = document.getElementById('previewVideo');
-const previewSkeleton = document.getElementById('previewSkeleton');
 
 // Button labels carry drawn SVG icons now, so restore the captured markup
 // instead of a text-only string when a job ends.
@@ -440,19 +454,16 @@ previewBtn.addEventListener('click', async () => {
     }
 });
 
-// Word highlighting requires the ayah text overlay — keep the toggle
-// disabled (and cleared) whenever "show text" is off.
+// Word highlighting is unavailable until the audio source provides verified
+// word timestamps. Never expose proportional estimates as recitation sync.
 const showTextCheckbox = document.getElementById('showTextCheckbox');
 const highlightWordsCheckbox = document.getElementById('highlightWordsCheckbox');
 const textPositionSelect = document.getElementById('textPositionSelect');
 
 function syncHighlightToggle() {
-    const enabled = showTextCheckbox.checked;
-    highlightWordsCheckbox.disabled = !enabled;
-    textPositionSelect.disabled = !enabled;
-    if (!enabled) {
-        highlightWordsCheckbox.checked = false;
-    }
+    highlightWordsCheckbox.disabled = true;
+    highlightWordsCheckbox.checked = false;
+    textPositionSelect.disabled = !showTextCheckbox.checked;
 }
 
 showTextCheckbox.addEventListener('change', syncHighlightToggle);

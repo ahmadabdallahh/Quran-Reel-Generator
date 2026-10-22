@@ -93,6 +93,7 @@ from quran_reels.config import (
     RECITERS_MAP,
     BISMILLAH_DURATION_SEC,
     BISMILLAH_SKIP_SURAHS,
+    should_show_bismillah_visual,
     SHOW_TEXT_DEFAULT,
     HIGHLIGHT_WORDS_DEFAULT,
     TEXT_POSITION_DEFAULT,
@@ -274,14 +275,6 @@ class JobContext:
         FFmpeg read.
         """
         return os.path.join(TEMP_DIR, f"{self.job_id}_highlight_{idx:03d}.png")
-
-    # ---- Bismillah (single segment, ayah_num=0) ----
-
-    def bismillah_audio(self) -> str:
-        return os.path.join(TEMP_DIR, f"{self.job_id}_audio_000_bismillah.mp3")
-
-    def bismillah_segment(self) -> str:
-        return os.path.join(TEMP_DIR, f"{self.job_id}_segment_000_bismillah.mp4")
 
     # ---- concat / chunk / final-output paths ----
 
@@ -604,7 +597,7 @@ def _merge_highlight_boxes(boxes, windows):
     return pairs
 
 
-def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_last=True, ayah_num=None, surah_name=None, text_png_path=None, highlight=None):
+def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_last=True, ayah_num=None, surah_name=None, text_png_path=None, highlight=None, frame_size=(TARGET_W, TARGET_H)):
     """Build one video segment with FFmpeg — background + audio, with optional ayah number watermark.
 
     Args:
@@ -635,10 +628,11 @@ def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_las
 
     # Preprocess backgrounds
     preprocessed = []
+    frame_w, frame_h = frame_size
     for p in (bg_paths if isinstance(bg_paths, (list, tuple)) else [bg_paths]):
         if not os.path.exists(p):
             raise FileNotFoundError(f"Background missing: {p}")
-        preprocessed.append(get_preprocessed_bg(p))
+        preprocessed.append(get_preprocessed_bg(p, frame_w, frame_h))
 
     n = len(preprocessed)
     part_dur = duration_sec / n
@@ -662,11 +656,15 @@ def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_las
     # PNG — geometry baked in, so a single overlay=0:0 node composites it.
     # Input index is n+1 (after n backgrounds + audio at index n).
     text_idx = None
+    text_overlays = []
     if text_png_path:
-        if not os.path.exists(text_png_path):
-            raise FileNotFoundError(f"Text PNG missing: {text_png_path}")
+        text_overlays = (text_png_path if isinstance(text_png_path, list)
+                         else [(text_png_path, 0.0, duration_sec)])
         text_idx = n + 1
-        inputs.extend(["-i", text_png_path])
+        for overlay_path, _, _ in text_overlays:
+            if not os.path.exists(overlay_path):
+                raise FileNotFoundError(f"Text PNG missing: {overlay_path}")
+            inputs.extend(["-loop", "1", "-framerate", "30", "-i", overlay_path])
 
     # Word-level read-along highlight (feature 002 US3): the glow sprite
     # is split into one branch per word; each branch fades in/out around
@@ -683,7 +681,7 @@ def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_las
                 and len(hl_windows) == len(hl_boxes)):
             pairs = _merge_highlight_boxes(hl_boxes, hl_windows)
             hl_w, hl_h = int(highlight["w"]), int(highlight["h"])
-            hl_idx = text_idx + 1
+            hl_idx = text_idx + len(text_overlays)
             # -loop 1: the sprite must be a real timed stream, not a
             # single held frame — time-based fade st/d never advances on
             # a one-frame input (overlay's repeatlast would freeze the
@@ -738,8 +736,13 @@ def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_las
         if text_idx is not None:
             # Text above background, below outro fade — fade eases the
             # composite so text and video leave together.
-            filt += f";[{last_v}][{text_idx}:v]overlay=0:0[txtv]"
-            last_v = "txtv"
+            for overlay_i, (_, start, end) in enumerate(text_overlays):
+                label = ("txtv" if overlay_i == len(text_overlays) - 1
+                         else f"txtv{overlay_i}")
+                filt += (f";[{last_v}][{text_idx + overlay_i}:v]"
+                         f"overlay=0:0:enable='between(t,{start:.3f},{end:.3f})'"
+                         f"[{label}]")
+                last_v = label
             if hl_chain:
                 filt += hl_chain
                 last_v = hl_final
@@ -762,8 +765,13 @@ def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_las
         v_parts += "".join([f"[v{i}]" for i in range(n)]) + f"concat=n={n}:v=1:a=0[bg];"
         filt = v_parts + f"[bg]null[{last_v}]"
         if text_idx is not None:
-            filt += f";[{last_v}][{text_idx}:v]overlay=0:0[txtv]"
-            last_v = "txtv"
+            for overlay_i, (_, start, end) in enumerate(text_overlays):
+                label = ("txtv" if overlay_i == len(text_overlays) - 1
+                         else f"txtv{overlay_i}")
+                filt += (f";[{last_v}][{text_idx + overlay_i}:v]"
+                         f"overlay=0:0:enable='between(t,{start:.3f},{end:.3f})'"
+                         f"[{label}]")
+                last_v = label
             if hl_chain:
                 filt += hl_chain
                 last_v = hl_final
@@ -832,7 +840,7 @@ def process_single_ayah_ffmpeg(args):
     """
     (job, reciter_id, surah, ayah, idx, template, bg_style, quality,
      reciter_speed, is_last, show_text, highlight_words,
-     text_position) = args
+     text_position, frame_size, include_bismillah) = args
 
     # Bind the parent build's JobContext to this worker thread so any
     # nested call to ``current_job()`` (e.g. inside ``download_audio``)
@@ -873,8 +881,25 @@ def process_single_ayah_ffmpeg(args):
         # transparent full-frame PNG.  Fetch failure = loud job failure
         # (Constitution II / FR-010) — never a silent textless success.
         text_png_path = None
+        timed_text_overlays = []
         highlight = None
-        use_highlight = bool(show_text and highlight_words)
+        # Word timing is not provided by the audio sources. The existing
+        # proportional estimate is not authoritative recitation timing, so
+        # keep exports at accurate ayah-level sync until timestamps exist.
+        use_highlight = False
+        bismillah_lead = should_show_bismillah_visual(
+            include_bismillah, surah, ayah)
+        lead_end = min(BISMILLAH_DURATION_SEC, duration)
+        if bismillah_lead:
+            bismillah_path = current_job().text_png_path(0)
+            render_ayah_text_png(
+                "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
+                bismillah_path, template=template, frame_w=frame_size[0],
+                frame_h=frame_size[1], position=text_position)
+            timed_text_overlays.append((bismillah_path, 0.0, lead_end))
+            add_log("Bismillah: visual lead-in over ayah audio; no added silence")
+        if show_text and highlight_words:
+            add_log(f"highlight: unavailable, no verified word timestamps ({surah}:{ayah})")
         if show_text:
             add_log(f"text: fetching ({surah}:{ayah})")
             try:
@@ -889,11 +914,17 @@ def process_single_ayah_ffmpeg(args):
                 current_job().text_png_path(idx),
                 template=template,
                 duration_sec=duration,
+                frame_w=frame_size[0],
+                frame_h=frame_size[1],
                 with_highlight=use_highlight,
                 highlight_path=current_job().highlight_png(idx),
                 position=text_position,
             )
-            text_png_path = meta["png"]
+            if bismillah_lead:
+                timed_text_overlays.append((meta["png"], lead_end, duration))
+                text_png_path = timed_text_overlays
+            else:
+                text_png_path = meta["png"]
             add_log(f"text: rendered ({surah}:{ayah})")
             if use_highlight:
                 if meta.get("windows") and meta.get("highlight"):
@@ -911,6 +942,8 @@ def process_single_ayah_ffmpeg(args):
                     # graceful plain-display fallback (FR-011).
                     add_log(f"highlight: unavailable, plain display "
                             f"({surah}:{ayah})")
+        elif bismillah_lead:
+            text_png_path = timed_text_overlays
         else:
             add_log(f"text: skipped ({surah}:{ayah})")
 
@@ -921,7 +954,7 @@ def process_single_ayah_ffmpeg(args):
 
         segment_out = current_job().segment_path(idx)
         ayah_num = f"{surah}:{ayah}"
-        build_segment_ffmpeg(bg_paths, audio_path, duration, segment_out, is_last=is_last, ayah_num=ayah_num, surah_name=SURAH_NAMES[surah-1], text_png_path=text_png_path, highlight=highlight)
+        build_segment_ffmpeg(bg_paths, audio_path, duration, segment_out, is_last=is_last, ayah_num=ayah_num, surah_name=SURAH_NAMES[surah-1], text_png_path=text_png_path, highlight=highlight, frame_size=frame_size)
 
         logging.info(f"✅ Segment {idx} complete: ayah {surah}:{ayah}")
         return (ayah, segment_out)
@@ -929,70 +962,6 @@ def process_single_ayah_ffmpeg(args):
     except Exception as e:
         logging.error(f"❌ Error processing ayah {surah}:{ayah}: {e}")
         raise
-
-# =============================================================================
-# STEP 16.5: BISMILLAH TITLE-CARD HELPERS
-# =============================================================================
-# Feature: prepend a 1.8s "Bismillah ar-Rahman ar-Raheem" card before ayah 1
-# of any surah.  Skipped for surahs in BISMILLAH_SKIP_SURAHS (Al-Fatihah,
-# At-Tawbah) per the standard recitation tradition.
-
-def _generate_silence_mp3(output_path, duration_sec, sample_rate=44100):
-    """Render ``duration_sec`` of stereo silence to an mp3 file.
-
-    Uses ffmpeg's ``anullsrc`` so no external asset is needed.  Matches the
-    sample rate / channel layout of the downloaded recitation mp3s
-    (44.1 kHz, stereo) so it can drop in next to them without re-encoding.
-    """
-    cmd = [
-        FFMPEG_EXE, '-y', '-hide_banner', '-loglevel', 'error',
-        '-f', 'lavfi',
-        '-i', f'anullsrc=channel_layout=stereo:sample_rate={sample_rate}',
-        '-t', f'{duration_sec:.3f}',
-        '-c:a', 'libmp3lame', '-b:a', '128k',
-        output_path,
-    ]
-    res = subprocess.run(cmd, capture_output=True, text=True)
-    if res.returncode != 0 or not os.path.exists(output_path):
-        raise RuntimeError(f"Silence mp3 generation failed: {res.stderr.strip()}")
-    return output_path
-
-
-def _build_bismillah_segment(template, bg_paths):
-    """Build a 1.8s silent title-card segment for Bismillah ar-Rahman ar-Raheem.
-
-    Now produces a background-only video (no Arabic text overlay) with a
-    silent audio track.  The visual lead-in still gives the listener a
-    moment of pause before the first ayah's audio starts.
-
-    Returns ``(ayah_num, segment_path)`` with ``ayah_num=0`` so the existing
-    sort-by-ayah-number logic places it before ayah 1.
-    """
-    job = current_job()
-    bismillah_audio = job.bismillah_audio()
-    bismillah_segment = job.bismillah_segment()
-
-    template_config = TEMPLATES.get(template, TEMPLATES['normal'])
-    if bg_paths:
-        first_bg = bg_paths[0]
-    else:
-        bg = get_next_background(template_config['bg_style'], count=1)
-        first_bg = bg if isinstance(bg, str) else bg[0]
-
-    # Generate the silence audio track.
-    _generate_silence_mp3(bismillah_audio, BISMILLAH_DURATION_SEC)
-
-    # Build the segment — background + silence, no text overlay (FR-007:
-    # the intro card NEVER carries verse text; ayah text starts only with
-    # its own audio).  is_last=False appends an outro fade so the
-    # crossfade into ayah 1 lands smoothly.
-    build_segment_ffmpeg(
-        [first_bg], bismillah_audio, BISMILLAH_DURATION_SEC,
-        bismillah_segment, is_last=False,
-    )
-    logging.info(f"✅ Bismillah title card built: {bismillah_segment}")
-    return (0, bismillah_segment)
-
 
 # =============================================================================
 # STEP 17: MAIN VIDEO BUILDER
@@ -1026,8 +995,8 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
       person_name:       Optional string for the output filename.
       target_duration_seconds: Optional cap on the total video length.
       include_bismillah: If True and the surah is not in
-                         ``BISMILLAH_SKIP_SURAHS``, prepend a 1.8 s
-                         silent title-card segment.
+                         ``BISMILLAH_SKIP_SURAHS``, show an unsynchronized
+                         1.8 s visual lead-in over the first ayah's audio.
       reciter_speed:     0.5..2.0; tempo multiplier applied via ffmpeg atempo.
       transition_style_override: Optional key of ``VIDEO_TRANSITIONS`` to
                                  override the template's default.
@@ -1052,6 +1021,7 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
         # Get config
         quality_config = QUALITY_PRESETS.get(quality, QUALITY_PRESETS['medium'])
         format_config = OUTPUT_FORMATS.get(format_type, OUTPUT_FORMATS['reels'])
+        frame_size = tuple(format_config['size'])
         template_config = TEMPLATES.get(template, TEMPLATES['normal'])
         if transition_style_override:
             # Caller (UI/API) picked an explicit style; shallow-copy so we
@@ -1144,7 +1114,7 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
         ayah_args = [
             (job, reciter_id, surah, ayah, idx, template, bg_style, quality,
              reciter_speed, idx == total_ayahs, show_text, highlight_words,
-             text_position)
+             text_position, frame_size, include_bismillah)
             for idx, ayah in enumerate(range(start_ayah, last_ayah + 1), start=1)
         ]
 
@@ -1180,19 +1150,10 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
         # Process in parallel
         add_log('Processing ayat in parallel...')
 
-        # Feature: Bismillah title card.  Built sequentially (it's just one
-        # short 1.8s render) so the parallel pool doesn't waste a worker on
-        # it and the xfade chain at the end naturally crossfades Bismillah
-        # into ayah 1.  Skipped for surahs in BISMILLAH_SKIP_SURAHS.
+        # Bismillah is an opt-in visual lead-in rendered over the first
+        # ayah's audio. It does not create a synthetic silent segment.
         segment_results = []
-        if (include_bismillah
-                and start_ayah == 1
-                and surah not in BISMILLAH_SKIP_SURAHS):
-            update_progress(11, 'جاري تحضير البسملة...')
-            add_log('Building Bismillah title card...')
-            bismillah_result = _build_bismillah_segment(template, None)
-            segment_results.append(bismillah_result)
-        elif include_bismillah and surah in BISMILLAH_SKIP_SURAHS:
+        if include_bismillah and surah in BISMILLAH_SKIP_SURAHS:
             add_log(f"Skipping Bismillah for surah {surah} (in BISMILLAH_SKIP_SURAHS)")
 
         if max_workers > 1:
