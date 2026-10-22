@@ -27,6 +27,11 @@
             --color-foam: #f7f4ea;
             --color-sand: #efe9d6;
             --color-golddeep: #6e4a10;
+            /* Interaction surfaces derived from the action emerald so hover,
+               focus and highlight states stay in one hue family. */
+            --color-tint-soft: color-mix(in srgb, var(--color-action) 7%, var(--color-card));
+            --color-tint: color-mix(in srgb, var(--color-action) 15%, var(--color-card));
+            --color-tint-strong: color-mix(in srgb, var(--color-action) 26%, var(--color-card));
             --font-display: "Amiri", serif;
             --font-body: "Cairo", sans-serif;
         }
@@ -73,14 +78,14 @@
                     <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80" for="personName">اسمك
                         (اختياري)</label>
                     <input type="text" id="personName" placeholder="اكتب اسمك هنا" maxlength="50"
-                        class="w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition placeholder:text-ink/70 hover:border-gold/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none" />
+                        class="w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition placeholder:text-ink/70 hover:border-action/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none" />
                 </div>
 
                 <div>
                     <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80" for="reciterSelect">اختر
                         القارئ</label>
                     <select id="reciterSelect"
-                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer hover:border-gold/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none disabled:opacity-45 disabled:cursor-not-allowed">
+                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer hover:border-action/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none disabled:opacity-45 disabled:cursor-not-allowed">
                         <option value="">جاري تحميل القراء...</option>
                     </select>
                 </div>
@@ -89,9 +94,9 @@
                     <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80" for="surahSearch">السورة
                         الكريمة</label>
                     <input type="text" id="surahSearch" placeholder="ابحث عن السورة..."
-                        class="mb-2.5 w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition placeholder:text-ink/70 hover:border-gold/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none" />
+                        class="mb-2.5 w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition placeholder:text-ink/70 hover:border-action/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none" />
                     <select id="surahSelect"
-                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer hover:border-gold/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none"></select>
+                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer hover:border-action/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none"></select>
                 </div>
 
                 <div class="col-span-full flex items-center gap-3 pt-1">
@@ -105,13 +110,13 @@
                     <div
                         class="flex items-center overflow-hidden rounded-2xl border-2 border-gold/25 bg-white transition focus-within:border-action focus-within:ring-4 focus-within:ring-action/20">
                         <button type="button"
-                            class="counter-btn w-12 h-12 shrink-0 text-action flex items-center justify-center transition hover:bg-action/10 active:scale-95 focus-visible:bg-action/15 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-action focus-visible:outline-none"
+                            class="counter-btn w-12 h-12 shrink-0 text-action flex items-center justify-center transition hover:bg-tint active:scale-95 focus-visible:bg-tint-strong focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-action focus-visible:outline-none"
                             data-type="minus" data-target="startAyah" aria-label="إنقاص آية البداية"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14" /></svg></button>
                         <input type="number" id="startAyah"
                             class="counter-input flex-1 min-w-0 bg-transparent text-center text-ink text-lg font-bold focus-visible:outline-none"
                             value="1" min="1" max="286" />
                         <button type="button"
-                            class="counter-btn w-12 h-12 shrink-0 text-action flex items-center justify-center transition hover:bg-action/10 active:scale-95 focus-visible:bg-action/15 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-action focus-visible:outline-none"
+                            class="counter-btn w-12 h-12 shrink-0 text-action flex items-center justify-center transition hover:bg-tint active:scale-95 focus-visible:bg-tint-strong focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-action focus-visible:outline-none"
                             data-type="plus" data-target="startAyah" aria-label="زيادة آية البداية"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg></button>
                     </div>
                 </div>
@@ -122,13 +127,13 @@
                     <div
                         class="flex items-center overflow-hidden rounded-2xl border-2 border-gold/25 bg-white transition focus-within:border-action focus-within:ring-4 focus-within:ring-action/20">
                         <button type="button"
-                            class="counter-btn w-12 h-12 shrink-0 text-action flex items-center justify-center transition hover:bg-action/10 active:scale-95 focus-visible:bg-action/15 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-action focus-visible:outline-none"
+                            class="counter-btn w-12 h-12 shrink-0 text-action flex items-center justify-center transition hover:bg-tint active:scale-95 focus-visible:bg-tint-strong focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-action focus-visible:outline-none"
                             data-type="minus" data-target="endAyah" aria-label="إنقاص آية النهاية"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14" /></svg></button>
                         <input type="number" id="endAyah"
                             class="counter-input flex-1 min-w-0 bg-transparent text-center text-ink text-lg font-bold focus-visible:outline-none"
                             value="7" min="1" max="286" />
                         <button type="button"
-                            class="counter-btn w-12 h-12 shrink-0 text-action flex items-center justify-center transition hover:bg-action/10 active:scale-95 focus-visible:bg-action/15 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-action focus-visible:outline-none"
+                            class="counter-btn w-12 h-12 shrink-0 text-action flex items-center justify-center transition hover:bg-tint active:scale-95 focus-visible:bg-tint-strong focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-action focus-visible:outline-none"
                             data-type="plus" data-target="endAyah" aria-label="زيادة آية النهاية"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg></button>
                     </div>
                 </div>
@@ -137,7 +142,7 @@
                     <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80"
                         for="targetDurationInput">الحد الأقصى للمدة (ثوانٍ)</label>
                     <input type="number" id="targetDurationInput" min="0" step="1" placeholder="بدون حد"
-                        class="w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition placeholder:text-ink/70 hover:border-gold/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none" />
+                        class="w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition placeholder:text-ink/70 hover:border-action/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none" />
                     <p class="mt-1.5 text-[0.85rem] text-ink/70">اتركه فارغاً لاستخدام كل الآيات المحددة</p>
                 </div>
 
@@ -159,7 +164,7 @@
                     <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80" for="qualitySelect">جودة
                         الفيديو</label>
                     <select id="qualitySelect"
-                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer hover:border-gold/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none">
+                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer hover:border-action/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none">
                         <option value="low">منخفضة (سريع)</option>
                         <option value="medium" selected>متوسطة</option>
                         <option value="high">عالية (بطيء)</option>
@@ -170,7 +175,7 @@
                     <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80" for="templateSelect">القالب
                         البصري</label>
                     <select id="templateSelect"
-                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer hover:border-gold/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none">
+                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer hover:border-action/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none">
                         <option value="normal" selected>افتراضي (طبيعة)</option>
                         <option value="ramadan">رمضاني (ذهبي)</option>
                         <option value="masjid">مساجد وصلاة</option>
@@ -182,7 +187,7 @@
                     <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80"
                         for="transitionStyleSelect">أسلوب الانتقال بين الآيات</label>
                     <select id="transitionStyleSelect"
-                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer hover:border-gold/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none">
+                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer hover:border-action/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none">
                         <option value="" selected>افتراضي (حسب القالب)</option>
                         <option value="cinematic">سينمائي: قطع حاد (بدون تداخل)</option>
                         <option value="dynamic">متحرك: تداخل (xfade) بين كل آية</option>
@@ -195,7 +200,7 @@
                     <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80" for="formatSelect">تنسيق
                         الفيديو</label>
                     <select id="formatSelect"
-                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer hover:border-gold/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none">
+                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer hover:border-action/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none">
                         <option value="reels" selected>Instagram Reels / TikTok (9:16)</option>
                         <option value="story">Instagram Story (9:16)</option>
                         <option value="post">Square Post (1:1)</option>
@@ -206,7 +211,7 @@
                     <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80"
                         for="textPositionSelect">موضع نص الآية</label>
                     <select id="textPositionSelect"
-                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer hover:border-gold/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none disabled:opacity-45 disabled:cursor-not-allowed"
+                        class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer hover:border-action/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none disabled:opacity-45 disabled:cursor-not-allowed"
                         disabled>
                         <option value="lower" selected>أسفل الفيديو</option>
                         <option value="middle">وسط الفيديو</option>
@@ -221,7 +226,7 @@
 
                 <div
                     class="col-span-full divide-y divide-gold/15 overflow-hidden rounded-2xl border-2 border-gold/20 bg-white/60">
-                    <label class="flex items-start gap-3 px-4 py-4 cursor-pointer select-none transition hover:bg-action/5"
+                    <label class="flex items-start gap-3 px-4 py-4 cursor-pointer select-none transition hover:bg-tint"
                         for="bismillahCheckbox">
                         <input type="checkbox" id="bismillahCheckbox" checked
                             class="mt-0.5 w-5 h-5 shrink-0 rounded accent-action cursor-pointer focus-visible:ring-2 focus-visible:ring-action/40 focus-visible:outline-none" />
@@ -232,7 +237,7 @@
                         </span>
                     </label>
 
-                    <label class="flex items-start gap-3 px-4 py-4 cursor-pointer select-none transition hover:bg-action/5"
+                    <label class="flex items-start gap-3 px-4 py-4 cursor-pointer select-none transition hover:bg-tint"
                         for="showTextCheckbox">
                         <input type="checkbox" id="showTextCheckbox" checked
                             class="mt-0.5 w-5 h-5 shrink-0 rounded accent-action cursor-pointer focus-visible:ring-2 focus-visible:ring-action/40 focus-visible:outline-none" />
@@ -244,7 +249,7 @@
                         </span>
                     </label>
 
-                    <label class="flex items-start gap-3 px-4 py-4 cursor-pointer select-none transition hover:bg-action/5"
+                    <label class="flex items-start gap-3 px-4 py-4 cursor-pointer select-none transition hover:bg-tint"
                         for="highlightWordsCheckbox">
                         <input type="checkbox" id="highlightWordsCheckbox" disabled
                             class="mt-0.5 w-5 h-5 shrink-0 rounded accent-action cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-action/40 focus-visible:outline-none" />
@@ -259,7 +264,7 @@
 
                 <div class="col-span-full grid gap-3 pt-3 sm:grid-cols-[1fr_1.6fr]">
                     <button type="button" id="previewBtn"
-                        class="flex items-center justify-center gap-3 rounded-[18px] border-2 border-action/25 bg-action/5 px-5 py-4 text-lg font-bold text-ink transition hover:border-action/50 hover:bg-action/10 active:scale-[0.99] disabled:opacity-55 disabled:cursor-wait focus-visible:ring-4 focus-visible:ring-action/30 focus-visible:outline-none">
+                        class="flex items-center justify-center gap-3 rounded-[18px] border-2 border-action/25 bg-tint-soft px-5 py-4 text-lg font-bold text-ink transition hover:border-action/50 hover:bg-tint active:scale-[0.99] disabled:opacity-55 disabled:cursor-wait focus-visible:ring-4 focus-visible:ring-action/30 focus-visible:outline-none">
                         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z" />

@@ -134,6 +134,9 @@ Emerald acts and gold glows; rarity is the point of both.
 - **Ink Secondary** (ink at 80%) and **Ink Muted** (ink at 70%): labels and
   hints, both passing AA on paper and card.
 - **Glow Line** (gold .30) and **Action Line** (emerald .25): borders.
+- **Interaction Tints** (`tint-soft` 7%, `tint` 15%, `tint-strong` 26% of
+  action over card): every hovered or highlighted surface — rows, counters,
+  picker options, text selection, the secondary button wash.
 - **Progress Track** (#e0d9c2) and **Terminal** (#060a08): inert surfaces.
 
 ### Named Rules
@@ -143,7 +146,9 @@ No element wears both jobs, and neither appears where it has no role.
 ### Token Source
 One source: Tailwind `@theme static` tokens in `UI.html` (`paper, paperdeep,
 card, ink, action, actionink, mint, mintlight, track, gold, honey, term, foam,
-sand, golddeep`). `static` matters: Tailwind v4 otherwise emits only the
+sand, golddeep, tint-soft, tint, tint-strong`). The three tints are mixed at
+runtime from `action` and `card` (7%, 15%, 26%), so every hover and highlight
+is the same emerald, never a grey wash. `static` matters: Tailwind v4 otherwise emits only the
 variables some utility happens to use, and plain-CSS rules such as the slider
 rail would resolve `var(--color-sand)` to nothing and drop the declaration.
 `style.css` reads tokens for everything utilities cannot express, except for
@@ -264,13 +269,15 @@ Warm and confident: cream surfaces, one emerald action, nothing sharp.
 ### Inputs / Fields
 - **Style:** white fill, 16px radius, 2px translucent gold border; hints sit
   below in ink at 70% (AA on card).
-- **Focus:** border turns emerald with a soft emerald halo ring.
+- **Hover:** the gold border hands over to a 40% emerald edge.
+- **Focus:** border turns solid emerald with a soft emerald halo ring.
 - **Error / Disabled:** disabled fields fade to 45% with `not-allowed` cursor;
   failed requests surface as an alert and the button returns to its idle label.
 - **Selects** render through token-styled proxy menus (button + listbox):
-  the list is opaque white with inset 12px row pills, hovered rows take an
-  emerald wash, the chosen row is solid emerald with foam text and a drawn
-  tick (state never rests on color alone); full keyboard support
+  the list is opaque white with inset 12px row pills, hovered rows take the
+  15% emerald tint, the keyboard row the 26% tint, the chosen row is solid
+  emerald with foam text and a drawn tick (state never rests on color
+  alone); full keyboard support
   (arrows/enter/escape), flips above the button when the viewport runs out of
   room, and raises its grid cell so it paints over later fields. The native
   select stays hidden in the DOM as the value source.

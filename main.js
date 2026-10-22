@@ -474,7 +474,7 @@ function enhanceSelect(select) {
     const label = select.closest('div').parentElement.querySelector('label');
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'ds-btn w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink outline-none transition cursor-pointer hover:border-gold/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none disabled:opacity-45 disabled:cursor-not-allowed flex items-center justify-between gap-3 text-right';
+    btn.className = 'ds-btn w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink outline-none transition cursor-pointer hover:border-action/40 focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none disabled:opacity-45 disabled:cursor-not-allowed flex items-center justify-between gap-3 text-right';
     btn.setAttribute('aria-haspopup', 'listbox');
     btn.setAttribute('aria-expanded', 'false');
     if (label) {
@@ -515,7 +515,7 @@ function enhanceSelect(select) {
             li.setAttribute('aria-selected', selected ? 'true' : 'false');
             li.textContent = opt.textContent;
             li.className = 'flex items-center justify-between gap-3 rounded-xl px-4 py-2.5 cursor-pointer transition ' +
-                (selected ? 'bg-action font-bold text-foam' : 'text-ink hover:bg-action/10');
+                (selected ? 'bg-action font-bold text-foam' : 'text-ink hover:bg-tint');
             if (selected) {
                 const tick = document.createElement('span');
                 tick.className = 'shrink-0 text-foam/80';
@@ -538,7 +538,7 @@ function enhanceSelect(select) {
         activeIdx = (idx + items.length) % items.length;
         items.forEach((li, i) => {
             const on = i === activeIdx;
-            li.classList.toggle('bg-action/15', on && li.getAttribute('aria-selected') !== 'true');
+            li.classList.toggle('bg-tint-strong', on && li.getAttribute('aria-selected') !== 'true');
             if (on) {
                 list.setAttribute('aria-activedescendant', li.id);
                 const listBox = list.getBoundingClientRect();
