@@ -60,13 +60,15 @@ header:focus-within .logo-tile {
     transform: rotate(0deg);
 }
 
-/* ----- Select chevron (data-URIs cannot read var(); stroke matches --color-action) ----- */
-.sel {
+/* ----- Select chevron (data-URIs cannot read var(); stroke matches --color-action) -----
+   `select.sel` outranks the `px-4` utility so the chevron gutter survives the
+   Tailwind layer, and the logical inset keeps it on the left in RTL. */
+select.sel {
     appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%230c6e47' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: left 1rem center;
-    padding-left: 2.75rem;
+    padding-inline-end: 2.75rem;
 }
 
 /* ----- Number fields: no native spinners (counters own the steppers) ----- */
@@ -92,15 +94,19 @@ input[type='number'] {
     appearance: none;
     width: 100%;
     height: 28px;
-    background: transparent;
+    /* The rail is painted on the input itself: the native track pseudo stays
+       transparent so the RTL fill (min on the right) is one gradient that
+       works in every engine. */
+    background: linear-gradient(to left,
+            var(--color-action) 0 var(--range-fill, 0%),
+            color-mix(in srgb, var(--color-gold) 65%, var(--color-sand)) var(--range-fill, 0%) 100%) center / 100% 6px no-repeat;
+    border-radius: 999px;
     cursor: pointer;
 }
 
 .range::-webkit-slider-runnable-track {
     height: 6px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--color-gold) 18%, var(--color-sand));
-    box-shadow: inset 0 1px 2px rgba(74, 60, 25, 0.18);
+    background: transparent;
 }
 
 .range::-webkit-slider-thumb {
@@ -132,7 +138,13 @@ input[type='number'] {
 .range::-moz-range-track {
     height: 6px;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--color-gold) 18%, var(--color-sand));
+    background: transparent;
+}
+
+.range::-moz-range-progress {
+    height: 6px;
+    border-radius: 999px;
+    background: transparent;
 }
 
 .range::-moz-range-thumb {

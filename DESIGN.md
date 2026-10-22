@@ -20,6 +20,7 @@ colors:
   line-glow: "rgba(138, 95, 22, 0.30)"
   line-action: "rgba(12, 110, 71, 0.25)"
   terminal: "#060a08"
+  foam: "#f7f4ea"
   error: "#a12a1f"
 typography:
   display:
@@ -63,13 +64,13 @@ spacing:
   xl: "40px"
 components:
   button-primary:
-    backgroundColor: "#34d399"
-    textColor: "{colors.action-ink}"
+    backgroundColor: "{colors.action}"
+    textColor: "{colors.foam}"
     rounded: "{rounded.md}"
     padding: "16px 20px"
   button-primary-hover:
-    backgroundColor: "#6ee7b7"
-    textColor: "{colors.action-ink}"
+    backgroundColor: "{colors.action-ink}"
+    textColor: "{colors.foam}"
     rounded: "{rounded.md}"
     padding: "16px 20px"
   button-secondary:
@@ -117,8 +118,9 @@ Emerald acts and gold glows; rarity is the point of both.
 ### Primary
 - **Oasis Emerald** (#0c6e47): the action color — primary button glow, progress,
   counters, checkboxes, focus borders, log highlights, wayfinding icons. The
-  primary button keeps the bright mint gradient (#34d399 → #6ee7b7) with deep
-  green ink (#052e1f, 7.7:1) so it stays the loudest thing on the page.
+  primary button is solid emerald with warm foam text (5.7:1), deepening to
+  action-ink on hover, so it stays the loudest thing on the page without
+  turning into candy.
 
 ### Secondary
 - **Honey Gold** (#8a5f16, light #e8b64c, dark #6e4a10): brand light only —
@@ -139,12 +141,14 @@ Emerald acts and gold glows; rarity is the point of both.
 No element wears both jobs, and neither appears where it has no role.
 
 ### Token Source
-One source: Tailwind `@theme` tokens in `UI.html` (`paper, paperdeep, card,
-ink, action, actionink, mint, mintlight, track, gold, honey, term, foam, sand,
-golddeep`). `style.css` holds no color of its own — every value reads
-`var(--color-*)`, except data-URI literals (select chevron, dot pattern) and
-alpha shadows, which cannot reference tokens and are commented where they
-appear.
+One source: Tailwind `@theme static` tokens in `UI.html` (`paper, paperdeep,
+card, ink, action, actionink, mint, mintlight, track, gold, honey, term, foam,
+sand, golddeep`). `static` matters: Tailwind v4 otherwise emits only the
+variables some utility happens to use, and plain-CSS rules such as the slider
+rail would resolve `var(--color-sand)` to nothing and drop the declaration.
+`style.css` holds no color of its own — every value reads `var(--color-*)`,
+except data-URI literals (select chevron, dot pattern) and alpha shadows, which
+cannot reference tokens and are commented where they appear.
 
 ### Focus System
 One indicator: the emerald `focus-visible` ring. Native states stay inside the
@@ -156,8 +160,9 @@ report their state through `aria-expanded`/`aria-selected`.
 ### Light Theme
 Warm paper is the default and only theme: paper canvas (#f4f1e8), cream cards
 (#fffdf6), ink text (#1d2b23), action emerald (#0c6e47) and honey gold
-(#8a5f16) so every pair passes AA. Fills keep the bright emerald gradient with
-deep-green ink. The build log stays a dark terminal. Implemented with Tailwind
+(#8a5f16) so every pair passes AA. Primary fills use solid emerald with foam
+text; the progress meter keeps its emerald gradient. The build log stays a dark
+terminal. Implemented with Tailwind
 utilities over shared `@theme` tokens; `style.css` keeps only what utilities
 cannot express (ambient background, logo tile, slider and chevron primitives,
 keyframes, player state classes, scrollbars). Large surfaces use near-solid
@@ -237,8 +242,8 @@ Warm and confident: cream surfaces, one emerald action, nothing sharp.
 
 ### Buttons
 - **Shape:** steady curve (18px radius), 16px × 20px padding, bold Cairo.
-- **Primary:** emerald gradient fill (#34d399 → #6ee7b7), deep-green ink text,
-  action glow; lifts on hover with a deeper glow and presses back on `:active`.
+- **Primary:** solid deep emerald fill (#0c6e47), warm foam text, action glow;
+  lifts on hover, deepens to action-ink, and presses back on `:active`.
 - **Hover / Focus:** translate up slightly; the emerald `focus-visible` ring
   (`ring-4 ring-action/30`) is the only keyboard indicator.
 - **Secondary:** translucent emerald wash with an emerald-tinted border; hover
@@ -267,8 +272,9 @@ Warm and confident: cream surfaces, one emerald action, nothing sharp.
 - **Counters** pair emerald steppers with a bold centered value and no native
   spinners; **checkboxes** tint emerald when checked and sit in one bordered
   block with hairline dividers.
-- **Slider** (reciter speed): 6px sand rail, 22px emerald thumb with a card
-  ring, emerald halo on keyboard focus, full-width 28px hit area.
+- **Slider** (reciter speed): 6px rail tinted gold over sand, emerald fill from
+  the RTL minimum to the thumb, 22px emerald thumb with a card ring, emerald
+  halo on keyboard focus, full-width 28px hit area.
 
 ### Progress + Player (signature components)
 - **Progress:** sand inset track, emerald gradient fill with a traveling sheen

@@ -173,13 +173,22 @@ function initCounters() {
         });
     });
 
-    // Live-update the reciter-speed label as the user drags the slider
+    // Live-update the reciter-speed label as the user drags the slider and
+    // paint the emerald fill from the RTL minimum (right) to the thumb.
     const reciterSpeedInput = document.getElementById('reciterSpeedInput');
     const reciterSpeedValue = document.getElementById('reciterSpeedValue');
     if (reciterSpeedInput && reciterSpeedValue) {
+        const paintFill = () => {
+            const min = parseFloat(reciterSpeedInput.min) || 0;
+            const max = parseFloat(reciterSpeedInput.max) || 100;
+            const pct = ((parseFloat(reciterSpeedInput.value) - min) / (max - min)) * 100;
+            reciterSpeedInput.style.setProperty('--range-fill', `${pct}%`);
+        };
         reciterSpeedInput.addEventListener('input', () => {
             reciterSpeedValue.textContent = parseFloat(reciterSpeedInput.value).toFixed(2);
+            paintFill();
         });
+        paintFill();
     }
 }
 

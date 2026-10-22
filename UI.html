@@ -9,7 +9,9 @@
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <link rel="stylesheet" href="style.css">
     <style type="text/tailwindcss">
-        @theme {
+        /* `static`: Tailwind prunes variables that no utility uses, but
+           style.css reads these directly, so every token must be emitted. */
+        @theme static {
             --color-paper: #f4f1e8;
             --color-paperdeep: #e7e1cf;
             --color-card: #fffdf6;
@@ -48,7 +50,7 @@
                 <p class="mt-1 text-sm font-semibold tracking-[0.18em] text-ink/70">صدقة جارية</p>
             </div>
         </div>
-        <p class="mx-auto mt-5 max-w-[34ch] text-center text-base text-ink/70">فيديو قرآني متزامن في دقيقة، بدون
+        <p class="mx-auto mt-5 max-w-[46ch] text-balance text-center text-base text-ink/70">فيديو قرآني متزامن في دقيقة، بدون
             مونتاج</p>
     </header>
 
@@ -266,7 +268,7 @@
                         معاينة
                     </button>
                     <button type="submit" id="generateBtn"
-                        class="flex items-center justify-center gap-3 rounded-[18px] bg-gradient-to-br from-mint to-mintlight px-5 py-4 text-lg font-bold text-actionink shadow-[0_10px_30px_rgba(12,110,71,0.26)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(12,110,71,0.32)] active:translate-y-0 active:scale-[0.99] disabled:opacity-55 disabled:cursor-wait focus-visible:ring-4 focus-visible:ring-action/30 focus-visible:outline-none">
+                        class="flex items-center justify-center gap-3 rounded-[18px] bg-action px-5 py-4 text-lg font-bold text-foam shadow-[0_10px_30px_rgba(12,110,71,0.28)] transition hover:-translate-y-0.5 hover:bg-actionink hover:shadow-[0_16px_36px_rgba(5,46,31,0.30)] active:translate-y-0 active:scale-[0.99] disabled:opacity-55 disabled:cursor-wait focus-visible:ring-4 focus-visible:ring-action/30 focus-visible:outline-none">
                         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
                             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <path
@@ -317,7 +319,7 @@
 
                 <div class="player-download mt-5 text-center">
                     <a id="downloadLink" href="#"
-                        class="inline-flex items-center justify-center gap-2.5 rounded-[18px] bg-gradient-to-br from-mint to-mintlight px-6 py-3 text-lg font-bold text-actionink no-underline shadow-[0_10px_30px_rgba(12,110,71,0.26)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(12,110,71,0.32)] active:scale-[0.99] focus-visible:ring-4 focus-visible:ring-action/30 focus-visible:outline-none"
+                        class="inline-flex items-center justify-center gap-2.5 rounded-[18px] bg-action px-6 py-3 text-lg font-bold text-foam no-underline shadow-[0_10px_30px_rgba(12,110,71,0.28)] transition hover:-translate-y-0.5 hover:bg-actionink hover:shadow-[0_16px_36px_rgba(5,46,31,0.30)] active:scale-[0.99] focus-visible:ring-4 focus-visible:ring-action/30 focus-visible:outline-none"
                         download>تحميل الفيديو</a>
                 </div>
             </div>
