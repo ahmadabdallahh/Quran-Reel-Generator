@@ -1190,7 +1190,7 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
                 and surah not in BISMILLAH_SKIP_SURAHS):
             update_progress(11, 'جاري تحضير البسملة...')
             add_log('Building Bismillah title card...')
-            bismillah_result = _build_bismillah_segment(template)
+            bismillah_result = _build_bismillah_segment(template, None)
             segment_results.append(bismillah_result)
         elif include_bismillah and surah in BISMILLAH_SKIP_SURAHS:
             add_log(f"Skipping Bismillah for surah {surah} (in BISMILLAH_SKIP_SURAHS)")
