@@ -20,8 +20,8 @@ time and avoid the circular import that would otherwise occur between
 from __future__ import annotations
 
 import logging
+import json
 import os
-import random
 from typing import List, Optional, Union
 
 
@@ -43,14 +43,36 @@ class BackgroundRotator:
 
         style_dir = os.path.join(VISION_DIR, self.style)
         if os.path.isdir(style_dir):
-            files = [f for f in os.listdir(style_dir) if f.endswith('.mp4')]
-            return [os.path.join(style_dir, f) for f in files]
+            files = [f for f in os.listdir(style_dir) if f.lower().endswith('.mp4')]
+            paths = [os.path.join(style_dir, f) for f in files]
         else:
             # Fallback to pattern-based in main vision folder
             pattern = f"{self.style}_part"
             files = [f for f in os.listdir(VISION_DIR)
-                     if f.startswith(pattern) and f.endswith('.mp4')]
-            return [os.path.join(VISION_DIR, f) for f in files]
+                     if f.startswith(pattern) and f.lower().endswith('.mp4')]
+            paths = [os.path.join(VISION_DIR, f) for f in files]
+
+        # The per-asset score is curated in the manifest after visual review.
+        # Unlisted legacy footage stays eligible, with a neutral score.
+        project_dir = os.path.abspath(os.path.join(VISION_DIR, os.pardir))
+        manifest_path = os.path.join(
+            project_dir, "assets", "manifests", "background-videos.json",
+        )
+        try:
+            with open(manifest_path, encoding="utf-8") as manifest_file:
+                records = json.load(manifest_file).get("assets", [])
+            self.visual_scores = {
+                os.path.normcase(os.path.normpath(os.path.join(
+                    project_dir, item["path"]
+                ))): float(item.get("text_readability_score", 0.5))
+                for item in records if item.get("path")
+            }
+        except (OSError, ValueError, TypeError, KeyError):
+            self.visual_scores = {}
+        return sorted(paths, key=lambda path: (
+            -self.visual_scores.get(os.path.normcase(os.path.normpath(path)), 0.5),
+            os.path.basename(path).casefold(),
+        ))
 
     def get_next(self, count: int = 1) -> Union[str, List[str]]:
         """Get next background(s) ensuring variety with smart rotation.
@@ -91,28 +113,25 @@ class BackgroundRotator:
 
             if candidates:
                 candidates = _filter_min_distance(candidates)
-                # Weighted random selection - prefer less used backgrounds
-                weights = []
-                for bg in candidates:
-                    usage_count = self._get_usage_count(bg)
-                    # Lower usage count = higher weight
-                    weight = 1.0 / (usage_count + 1)
-                    weights.append(weight)
-
-                # Normalize weights
-                total_weight = sum(weights)
-                if total_weight > 0:
-                    weights = [w / total_weight for w in weights]
-                    selected = random.choices(candidates, weights=weights)[0]
-                else:
-                    selected = random.choice(candidates)
+                # Prefer curated text-safe compositions, then the least
+                # recently used eligible clip for predictable variety.
+                selected = min(candidates, key=lambda bg: (
+                    -self.visual_scores.get(os.path.normcase(os.path.normpath(bg)), 0.5),
+                    self._get_last_usage_time(bg),
+                    os.path.basename(bg).casefold(),
+                ))
 
                 self.used_backgrounds.add(selected)
                 self._record_usage(selected)
                 return selected
             else:
-                # Fallback to random if no candidates
-                selected = random.choice(self.available)
+                # If the recent-use filter excludes every clip, choose the
+                # next highest-ranked item instead of randomizing the scene.
+                selected = min(self.available, key=lambda bg: (
+                    -self.visual_scores.get(os.path.normcase(os.path.normpath(bg)), 0.5),
+                    self._get_last_usage_time(bg),
+                    os.path.basename(bg).casefold(),
+                ))
                 self.used_backgrounds.add(selected)
                 self._record_usage(selected)
                 return selected

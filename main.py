@@ -4,7 +4,6 @@
 import os
 import sys
 import shutil
-import random
 import threading
 import webbrowser
 import json
@@ -1677,7 +1676,7 @@ def init_bg_cache():
 
         # Check if style folder exists
         if os.path.isdir(style_dir):
-            files = [f for f in os.listdir(style_dir) if f.endswith('.mp4')]
+            files = [f for f in os.listdir(style_dir) if f.lower().endswith('.mp4')]
             logging.debug(f"Found {len(files)} files in {style_dir}/")
         else:
             # Fallback: try old pattern-based naming in main vision folder
@@ -1685,7 +1684,7 @@ def init_bg_cache():
             space_pattern = pattern.replace('_', ' ')
             files = [f for f in os.listdir(VISION_DIR)
                      if (f.startswith(pattern) or f.startswith(space_pattern))
-                     and f.endswith('.mp4')]
+                     and f.lower().endswith('.mp4')]
             if files:
                 logging.debug(f"Fallback: Found {len(files)} files with pattern '{pattern}' in main folder")
 
@@ -1712,7 +1711,7 @@ def pick_bg(style='nature', count=1):
 
     if count == 1:
         # Return full path to the selected file
-        selected_file = random.choice(files)
+        selected_file = sorted(files, key=str.casefold)[0]
         style_dir = os.path.join(VISION_DIR, style)
 
         # Check if style folder exists, fallback to main vision folder
@@ -1721,7 +1720,7 @@ def pick_bg(style='nature', count=1):
         else:
             return os.path.join(VISION_DIR, selected_file)
     else:
-        selected = random.sample(files, min(count, len(files)))
+        selected = sorted(files, key=str.casefold)[:min(count, len(files))]
         style_dir = os.path.join(VISION_DIR, style)
 
         if os.path.isdir(style_dir):
