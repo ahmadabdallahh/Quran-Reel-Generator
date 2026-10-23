@@ -1884,6 +1884,10 @@ def serve_ui():
 def serve_css():
     return send_from_directory(BUNDLE_DIR, 'style.css')
 
+@app.route('/tailwind.generated.css')
+def serve_generated_css():
+    return send_from_directory(BUNDLE_DIR, 'tailwind.generated.css')
+
 @app.route('/main.js')
 def serve_js():
     return send_from_directory(BUNDLE_DIR, 'main.js')

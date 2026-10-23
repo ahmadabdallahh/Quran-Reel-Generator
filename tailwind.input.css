@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+/* Keep every semantic token available to both utilities and style.css. */
+@theme static {
+    --color-paper: #f4f1e8;
+    --color-paperdeep: #e7e1cf;
+    --color-card: #fffdf6;
+    --color-ink: #1d2b23;
+    --color-action: #6e4a10;
+    --color-actionink: #1d2b23;
+    --color-mint: #34d399;
+    --color-mintlight: #6ee7b7;
+    --color-track: #e0d9c2;
+    --color-gold: #8a5f16;
+    --color-honey: #e8b64c;
+    --color-term: #060a08;
+    --color-foam: #f7f4ea;
+    --color-sand: #efe9d6;
+    --color-golddeep: #6e4a10;
+    --color-tint-soft: color-mix(in srgb, var(--color-action) 7%, var(--color-card));
+    --color-tint: color-mix(in srgb, var(--color-action) 15%, var(--color-card));
+    --color-tint-strong: color-mix(in srgb, var(--color-action) 26%, var(--color-card));
+    --font-display: "Scheherazade New", serif;
+    --font-body: "Cairo", "Segoe UI", sans-serif;
+}
