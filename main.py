@@ -1816,6 +1816,58 @@ def get_preprocessed_bg(bg_path, target_w=TARGET_W, target_h=TARGET_H):
 # STEP 18: API ROUTES (SIMPLIFIED)
 # =============================================================================
 
+def _validated_api_payload():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return None, (jsonify({'error': 'الطلب غير صالح؛ أرسل بيانات JSON صحيحة'}), 400)
+
+    try:
+        surah = int(data.get('surah', 1))
+        start_ayah = int(data.get('startAyah', data.get('ayah', 1)))
+        end_value = data.get('endAyah', start_ayah)
+        end_ayah = int(end_value) if end_value not in (None, '') else start_ayah
+        reciter_id = data.get('reciter')
+        speed = float(data.get('reciterSpeed', 1.0))
+    except (TypeError, ValueError):
+        return None, (jsonify({'error': 'تحقق من اختيار القارئ والسورة وأرقام الآيات'}), 400)
+
+    if reciter_id not in RECITERS_MAP.values():
+        return None, (jsonify({'error': 'اختر قارئاً من القائمة'}), 400)
+    if surah not in VERSE_COUNTS:
+        return None, (jsonify({'error': 'رقم السورة يجب أن يكون بين 1 و114'}), 400)
+    if not 1 <= start_ayah <= VERSE_COUNTS[surah]:
+        return None, (jsonify({'error': 'آية البداية خارج نطاق السورة المختارة'}), 400)
+    if not start_ayah <= end_ayah <= VERSE_COUNTS[surah]:
+        return None, (jsonify({'error': 'آية النهاية يجب أن تساوي آية البداية أو تليها ضمن السورة'}), 400)
+    if not 0.5 <= speed <= 2.0:
+        return None, (jsonify({'error': 'سرعة التلاوة يجب أن تكون بين 0.5 و2.0'}), 400)
+
+    quality = data.get('quality', 'medium')
+    format_type = data.get('format', 'reels')
+    template = data.get('template', 'normal')
+    transition_style = data.get('transitionStyle') or None
+    if quality not in QUALITY_PRESETS:
+        return None, (jsonify({'error': 'جودة الفيديو المختارة غير صالحة'}), 400)
+    if format_type not in OUTPUT_FORMATS:
+        return None, (jsonify({'error': 'تنسيق الفيديو المختار غير صالح'}), 400)
+    if template not in TEMPLATES:
+        return None, (jsonify({'error': 'القالب المختار غير صالح'}), 400)
+    if transition_style not in (None, 'cinematic', 'dynamic', 'smooth', 'cut'):
+        return None, (jsonify({'error': 'أسلوب الانتقال المختار غير صالح'}), 400)
+
+    return {
+        'data': data,
+        'reciter': reciter_id,
+        'surah': surah,
+        'startAyah': start_ayah,
+        'endAyah': end_ayah,
+        'speed': speed,
+        'quality': quality,
+        'format': format_type,
+        'template': template,
+        'transitionStyle': transition_style,
+    }, None
+
 @app.route('/')
 def serve_ui():
     if os.path.exists(UI_PATH):
@@ -1835,26 +1887,22 @@ def generate_video():
     if current_progress.is_running:
         return jsonify({'error': 'عملية إنشاء فيديو قيد التنفيذ بالفعل'}), 400
 
-    data = request.json
-    reciter_id = data.get('reciter')
-    surah = int(data.get('surah', 1))
-    start_ayah = int(data.get('startAyah', 1))
-    end_ayah = data.get('endAyah')
-    if end_ayah is not None:
-        end_ayah = int(end_ayah)
-
-    quality = data.get('quality', 'medium')
-    format_type = data.get('format', 'reels')
-    template = data.get('template', 'normal')
+    payload, error = _validated_api_payload()
+    if error:
+        return error
+    data = payload['data']
+    reciter_id = payload['reciter']
+    surah = payload['surah']
+    start_ayah = payload['startAyah']
+    end_ayah = payload['endAyah']
+    quality = payload['quality']
+    format_type = payload['format']
+    template = payload['template']
     person_name = data.get('personName', '')
     target_duration_seconds = data.get('targetDurationSeconds')
     include_bismillah = data.get('includeBismillah', False)
-    reciter_speed = data.get('reciterSpeed', 1.0)
-    try:
-        reciter_speed = float(reciter_speed)
-    except (TypeError, ValueError):
-        reciter_speed = 1.0
-    transition_style_override = data.get('transitionStyle') or None
+    reciter_speed = payload['speed']
+    transition_style_override = payload['transitionStyle']
     show_text = bool(data.get('showText', data.get('show_text', SHOW_TEXT_DEFAULT)))
     highlight_words = bool(data.get(
         'highlightWords', data.get('highlight_words', HIGHLIGHT_WORDS_DEFAULT)))
@@ -1889,11 +1937,14 @@ def preview_video():
     if current_progress.is_running:
         return jsonify({'error': 'عملية أخرى قيد التنفيذ'}), 400
 
-    data = request.json
-    reciter_id = data.get('reciter')
-    surah = int(data.get('surah', 1))
-    ayah = int(data.get('ayah', data.get('startAyah', 1)))
-    template = data.get('template', 'normal')
+    payload, error = _validated_api_payload()
+    if error:
+        return error
+    data = payload['data']
+    reciter_id = payload['reciter']
+    surah = payload['surah']
+    ayah = payload['startAyah']
+    template = payload['template']
     show_text = bool(data.get('showText', data.get('show_text', SHOW_TEXT_DEFAULT)))
     highlight_words = bool(data.get(
         'highlightWords', data.get('highlight_words', HIGHLIGHT_WORDS_DEFAULT)))

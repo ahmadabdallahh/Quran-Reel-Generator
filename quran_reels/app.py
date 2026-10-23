@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import os
 from flask import Flask
-from flask_cors import CORS
 
 
 def create_app(exec_dir: str | None = None) -> Flask:
@@ -27,9 +26,4 @@ def create_app(exec_dir: str | None = None) -> Flask:
     # Lazy import — ``main`` creates the global ``app`` on import.
     import main  # noqa: F401
 
-    # Ensure CORS is applied (main does it at import time, but be defensive)
-    try:
-        CORS(main.app)
-    except Exception:
-        pass
     return main.app
