@@ -1828,6 +1828,9 @@ def _validated_api_payload():
         end_ayah = int(end_value) if end_value not in (None, '') else start_ayah
         reciter_id = data.get('reciter')
         speed = float(data.get('reciterSpeed', 1.0))
+        raw_duration = data.get('targetDurationSeconds')
+        target_duration = (None if raw_duration in (None, '')
+                           else int(raw_duration))
     except (TypeError, ValueError):
         return None, (jsonify({'error': 'تحقق من اختيار القارئ والسورة وأرقام الآيات'}), 400)
 
@@ -1841,6 +1844,8 @@ def _validated_api_payload():
         return None, (jsonify({'error': 'آية النهاية يجب أن تساوي آية البداية أو تليها ضمن السورة'}), 400)
     if not 0.5 <= speed <= 2.0:
         return None, (jsonify({'error': 'سرعة التلاوة يجب أن تكون بين 0.5 و2.0'}), 400)
+    if target_duration is not None and target_duration < 1:
+        return None, (jsonify({'error': 'المدة القصوى يجب أن تكون ثانية واحدة على الأقل'}), 400)
 
     quality = data.get('quality', 'medium')
     format_type = data.get('format', 'reels')
@@ -1862,6 +1867,7 @@ def _validated_api_payload():
         'startAyah': start_ayah,
         'endAyah': end_ayah,
         'speed': speed,
+        'targetDurationSeconds': target_duration,
         'quality': quality,
         'format': format_type,
         'template': template,
@@ -1882,6 +1888,10 @@ def serve_css():
 def serve_js():
     return send_from_directory(BUNDLE_DIR, 'main.js')
 
+@app.route('/assets/<path:filename>')
+def serve_asset(filename):
+    return send_from_directory(os.path.join(EXEC_DIR, 'assets'), filename)
+
 @app.route('/api/generate', methods=['POST'])
 def generate_video():
     if current_progress.is_running:
@@ -1899,7 +1909,7 @@ def generate_video():
     format_type = payload['format']
     template = payload['template']
     person_name = data.get('personName', '')
-    target_duration_seconds = data.get('targetDurationSeconds')
+    target_duration_seconds = payload['targetDurationSeconds']
     include_bismillah = data.get('includeBismillah', False)
     reciter_speed = payload['speed']
     transition_style_override = payload['transitionStyle']

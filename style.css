@@ -13,6 +13,14 @@
     --accent-ink: var(--color-actionink);
 }
 
+@font-face {
+    font-family: "Scheherazade New";
+    src: url("/assets/fonts/ScheherazadeNew-Regular.ttf") format("truetype");
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+}
+
 /* ----- Ambient background (warm paper with gold light; dot fill matches --color-gold, data-URIs cannot read var()) ----- */
 body::before {
     content: '';
@@ -418,18 +426,129 @@ input:-webkit-autofill {
     -webkit-box-shadow: 0 0 0 40px var(--color-card) inset;
 }
 
-@media (prefers-reduced-motion: reduce) {
-    .form-grid > *,
-    .live-dot,
-    .player-skeleton,
-    .loading-dots span,
-    .progress-bar::after {
-        animation: none;
-    }
+.template-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
 
-    .logo-tile,
-    .range::-webkit-slider-thumb {
-        transition: none;
+@media (min-width: 640px) {
+    .template-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
+    }
+}
+
+.template-option {
+    position: relative;
+    display: grid;
+    gap: 8px;
+    padding: 8px;
+    overflow: hidden;
+    color: var(--color-ink);
+    font-weight: 700;
+    text-align: center;
+    cursor: pointer;
+    background: color-mix(in srgb, var(--color-card) 88%, var(--color-sand));
+    border: 2px solid color-mix(in srgb, var(--color-gold) 24%, transparent);
+    border-radius: 18px;
+    transition: border-color 180ms ease, background-color 180ms ease, transform 180ms ease;
+}
+
+.template-option:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--color-gold) 55%, transparent);
+}
+
+.template-option:has(input:checked) {
+    background: var(--color-tint-soft);
+    border-color: var(--color-action);
+    box-shadow: inset 0 0 0 1px var(--color-action);
+}
+
+.template-option:has(input:focus-visible) {
+    outline: 3px solid color-mix(in srgb, var(--color-action) 28%, transparent);
+    outline-offset: 2px;
+}
+
+.template-option input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+}
+
+.template-option img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 9 / 12;
+    object-fit: cover;
+    border-radius: 11px;
+}
+
+.advanced-options {
+    border-top: 1px solid color-mix(in srgb, var(--color-gold) 25%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--color-gold) 25%, transparent);
+}
+
+.advanced-options summary {
+    padding: 14px 4px;
+    color: var(--color-golddeep);
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.advanced-options-content {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+    padding: 4px 0 18px;
+}
+
+.inline-error {
+    padding: 12px 16px;
+    color: #8a2f24;
+    background: #fff1ed;
+    border: 1px solid #d89886;
+    border-radius: 14px;
+}
+
+.inline-error[hidden],
+.retry-button[hidden] {
+    display: none;
+}
+
+.render-eta {
+    min-height: 1.5rem;
+    margin: 10px 0;
+    color: color-mix(in srgb, var(--color-foam) 72%, transparent);
+    font-size: 0.9rem;
+}
+
+.retry-button {
+    margin: 12px 0;
+    padding: 10px 16px;
+    color: var(--color-foam);
+    font-weight: 700;
+    background: var(--color-action);
+    border-radius: 12px;
+    cursor: pointer;
+}
+
+@media (max-width: 639px) {
+    .advanced-options-content {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
     }
 
     header:hover .logo-tile,

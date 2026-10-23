@@ -39,7 +39,6 @@ const startAyahInput = document.getElementById('startAyah');
 const endAyahInput = document.getElementById('endAyah');
 const reciterSelect = document.getElementById('reciterSelect');
 const qualitySelect = document.getElementById('qualitySelect');
-const templateSelect = document.getElementById('templateSelect');
 const formatSelect = document.getElementById('formatSelect');
 const previewSkeleton = document.getElementById('previewSkeleton');
 const playerFrame = document.getElementById('playerFrame');
@@ -70,6 +69,9 @@ const progressPercent = document.getElementById('progressPercent');
 const progressTrack = document.getElementById('progressTrack');
 const statusText = document.getElementById('statusText');
 const logTerminal = document.getElementById('logTerminal');
+const formError = document.getElementById('formError');
+const renderEta = document.getElementById('renderEta');
+const retryBtn = document.getElementById('retryBtn');
 
 const videoPreviewWrapper = document.getElementById('videoPreviewWrapper');
 const previewVideo = document.getElementById('previewVideo');
@@ -296,7 +298,15 @@ function updateUI(data) {
     progressFill.style.width = `${data.percent}%`;
     progressPercent.textContent = `${data.percent}%`;
     progressTrack.setAttribute('aria-valuenow', String(data.percent));
-    statusText.textContent = data.status;
+    statusText.textContent = data.error || data.status;
+    if (data.is_running && Number.isFinite(data.eta_seconds) && data.eta_seconds > 0) {
+        const seconds = Math.ceil(data.eta_seconds);
+        const estimate = seconds >= 60 ? `${Math.ceil(seconds / 60)} دقيقة تقريباً` : `${seconds} ثانية تقريباً`;
+        renderEta.textContent = `المرحلة: ${data.stage || 'جاري المعالجة'} · الوقت المتبقي ${estimate}`;
+    } else {
+        renderEta.textContent = data.is_running ? `المرحلة: ${data.stage || 'جاري المعالجة'}` : '';
+    }
+    retryBtn.hidden = !data.error;
 
     if (data.is_running) {
         setPlayerState('building');
@@ -332,7 +342,10 @@ function updateUI(data) {
 
         // Bring the player into view and start playback (autoplay policies
         // may block it — native controls let the user press play instead).
-        videoPreviewWrapper.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        videoPreviewWrapper.scrollIntoView({
+            behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+            block: 'nearest'
+        });
         previewVideo.play().catch(() => {});
     }
 
@@ -354,7 +367,7 @@ generateBtn.addEventListener('click', async (e) => {
         startAyah: parseInt(startAyahInput.value),
         endAyah: parseInt(endAyahInput.value),
         quality: qualitySelect.value,
-        template: templateSelect.value,
+        template: document.querySelector('input[name="template"]:checked')?.value || 'normal',
         personName: personNameInput.value,
         format: formatSelect.value,
         includeBismillah: document.getElementById('bismillahCheckbox').checked,
@@ -370,12 +383,16 @@ generateBtn.addEventListener('click', async (e) => {
         transitionStyle: document.getElementById('transitionStyleSelect').value || null
     };
 
-    if (payload.endAyah < payload.startAyah) {
-        alert('حدث خطأ: يجب أن تكون آية النهاية أكبر من آية البداية');
+    if (!Number.isInteger(payload.surah) || !Number.isInteger(payload.startAyah) ||
+        !Number.isInteger(payload.endAyah) || payload.startAyah < 1 ||
+        payload.endAyah < payload.startAyah || payload.endAyah > (VERSE_COUNTS[payload.surah] || 0)) {
+        formError.textContent = 'تحقق من السورة وآيات البداية والنهاية قبل إنشاء الفيديو.';
+        formError.hidden = false;
         return;
     }
 
     try {
+        formError.hidden = true;
         resetPlayer();
         generateBtn.disabled = true;
         generateBtn.innerHTML = WORKING_LABEL;
@@ -386,8 +403,8 @@ generateBtn.addEventListener('click', async (e) => {
             body: JSON.stringify(payload)
         });
 
-        const data = await res.json();
-        if (data.success) {
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.success) {
             if (!progressInterval) {
                 progressInterval = setInterval(pollProgress, 1000);
             }
@@ -395,12 +412,14 @@ generateBtn.addEventListener('click', async (e) => {
         } else {
             generateBtn.disabled = false;
             generateBtn.innerHTML = generateBtnDefaultLabel;
-            alert(data.error || 'حدث خطأ في بدء العملية');
+            formError.textContent = data.error || 'تعذر بدء إنشاء الفيديو. تحقق من المدخلات ثم حاول مجدداً.';
+            formError.hidden = false;
         }
     } catch (e) {
         generateBtn.disabled = false;
         generateBtn.innerHTML = generateBtnDefaultLabel;
-        alert('فشل الاتصال بالخادم: ' + e.message);
+        formError.textContent = `تعذر الاتصال بالخادم: ${e.message}`;
+        formError.hidden = false;
     }
 });
 
@@ -417,7 +436,7 @@ previewBtn.addEventListener('click', async () => {
         reciter: reciterSelect.value,
         surah: parseInt(surahSelect.value),
         ayah: parseInt(startAyahInput.value),
-        template: templateSelect.value,
+        template: document.querySelector('input[name="template"]:checked')?.value || 'normal',
         showText: document.getElementById('showTextCheckbox').checked,
         highlightWords: document.getElementById('highlightWordsCheckbox').checked,
         textPosition: document.getElementById('textPositionSelect').value
@@ -442,16 +461,24 @@ previewBtn.addEventListener('click', async () => {
             }
             pollProgress();
         } else {
-            alert(data.error || 'تعذر إنشاء المعاينة (تحقق من الاتصال وحاول مجددا)');
+            formError.textContent = data.error || 'تعذر إنشاء المعاينة. تحقق من الاتصال وحاول مجدداً.';
+            formError.hidden = false;
             previewBtn.disabled = false;
             previewBtn.innerHTML = previewBtnDefaultLabel;
         }
     } catch (e) {
         console.error('Preview error:', e);
-        alert('فشل الاتصال بالخادم: ' + e.message);
+        formError.textContent = `تعذر الاتصال بالخادم: ${e.message}`;
+        formError.hidden = false;
         previewBtn.disabled = false;
         previewBtn.innerHTML = previewBtnDefaultLabel;
     }
+});
+
+retryBtn.addEventListener('click', () => {
+    retryBtn.hidden = true;
+    formError.hidden = true;
+    generateBtn.click();
 });
 
 // Word highlighting is unavailable until the audio source provides verified
