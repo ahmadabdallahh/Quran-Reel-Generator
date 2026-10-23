@@ -19,7 +19,6 @@ import tempfile
 import atexit
 
 from flask import Flask, request, jsonify, send_file, send_from_directory
-from flask_cors import CORS
 import requests as http_requests
 from urllib3.util.retry import Retry
 from urllib3 import disable_warnings
@@ -128,7 +127,6 @@ BUNDLE_DIR = bundled_dir()
 
 # Create the Flask app once all the path constants are resolved.
 app = Flask(__name__, static_folder=EXEC_DIR)
-CORS(app)
 
 # =============================================================================
 # STEP 2: LOGGING SETUP
@@ -596,7 +594,17 @@ def _merge_highlight_boxes(boxes, windows):
     return pairs
 
 
-def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_last=True, ayah_num=None, surah_name=None, text_png_path=None, highlight=None, frame_size=(TARGET_W, TARGET_H)):
+def _video_encoding_args(quality_config):
+    return [
+        "-c:v", quality_config['codec'],
+        "-preset", quality_config['preset'],
+        "-b:v", quality_config['bitrate'],
+        "-r", str(quality_config['fps']),
+        "-threads", "4",
+    ]
+
+
+def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_last=True, ayah_num=None, surah_name=None, text_png_path=None, highlight=None, frame_size=(TARGET_W, TARGET_H), quality='medium'):
     """Build one video segment with FFmpeg — background + audio, with optional ayah number watermark.
 
     Args:
@@ -624,6 +632,8 @@ def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_las
         raise FileNotFoundError(f"Audio missing: {audio_path}")
     if os.path.getsize(audio_path) < 1000:
         raise ValueError(f"Audio too small: {os.path.getsize(audio_path)} bytes")
+
+    quality_config = QUALITY_PRESETS.get(quality, QUALITY_PRESETS['medium'])
 
     # Preprocess backgrounds
     preprocessed = []
@@ -731,7 +741,7 @@ def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_las
         last_v = "vpre"
 
     if n == 1:
-        filt = f"[0:v]trim=duration={duration_sec},setpts=PTS-STARTPTS,fps=30[{last_v}]"
+        filt = f"[0:v]trim=duration={duration_sec},setpts=PTS-STARTPTS,fps={quality_config['fps']}[{last_v}]"
         if text_idx is not None:
             # Text above background, below outro fade — fade eases the
             # composite so text and video leave together.
@@ -752,15 +762,14 @@ def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_las
         cmd = [FFMPEG_EXE] + common_args + inputs + [
             "-filter_complex", filt,
         ] + map_args + [
-            "-t", str(duration_sec), "-r", "30",
-            "-c:v", "libx264", "-preset", "ultrafast", "-threads", "4", "-pix_fmt", "yuv420p",
+            "-t", str(duration_sec), *_video_encoding_args(quality_config), "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "192k", "-shortest",
             output_path
         ]
     else:
         v_parts = ""
         for i in range(n):
-            v_parts += f"[{i}:v]trim=duration={part_dur},setpts=PTS-STARTPTS,fps=30[v{i}];"
+            v_parts += f"[{i}:v]trim=duration={part_dur},setpts=PTS-STARTPTS,fps={quality_config['fps']}[v{i}];"
         v_parts += "".join([f"[v{i}]" for i in range(n)]) + f"concat=n={n}:v=1:a=0[bg];"
         filt = v_parts + f"[bg]null[{last_v}]"
         if text_idx is not None:
@@ -782,8 +791,7 @@ def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_las
         cmd = [FFMPEG_EXE] + common_args + inputs + [
             "-filter_complex", filt,
         ] + map_args + [
-            "-t", str(duration_sec), "-r", "30",
-            "-c:v", "libx264", "-preset", "ultrafast", "-threads", "4", "-pix_fmt", "yuv420p",
+            "-t", str(duration_sec), *_video_encoding_args(quality_config), "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "192k", "-shortest",
             output_path
         ]
@@ -953,7 +961,7 @@ def process_single_ayah_ffmpeg(args):
 
         segment_out = current_job().segment_path(idx)
         ayah_num = f"{surah}:{ayah}"
-        build_segment_ffmpeg(bg_paths, audio_path, duration, segment_out, is_last=is_last, ayah_num=ayah_num, surah_name=SURAH_NAMES[surah-1], text_png_path=text_png_path, highlight=highlight, frame_size=frame_size)
+        build_segment_ffmpeg(bg_paths, audio_path, duration, segment_out, is_last=is_last, ayah_num=ayah_num, surah_name=SURAH_NAMES[surah-1], text_png_path=text_png_path, highlight=highlight, frame_size=frame_size, quality=quality)
 
         logging.info(f"✅ Segment {idx} complete: ayah {surah}:{ayah}")
         return (ayah, segment_out)
@@ -1019,6 +1027,7 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
 
         # Get config
         quality_config = QUALITY_PRESETS.get(quality, QUALITY_PRESETS['medium'])
+        video_encode_args = _video_encoding_args(quality_config)
         format_config = OUTPUT_FORMATS.get(format_type, OUTPUT_FORMATS['reels'])
         frame_size = tuple(format_config['size'])
         template_config = TEMPLATES.get(template, TEMPLATES['normal'])
@@ -1192,7 +1201,7 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
             # Single segment - simple concat
             cmd_concat = [
                 FFMPEG_EXE, "-y", "-f", "concat", "-safe", "0", "-i", list_path,
-                "-c:v", "libx264", "-preset", "ultrafast", "-threads", "4",
+                *video_encode_args,
                 "-c:a", "aac", "-b:a", "192k",
                 "-movflags", "+faststart",
                 temp_output_path
@@ -1239,7 +1248,7 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
                     # branch above, just with more inputs.
                     cmd_concat = [
                         FFMPEG_EXE, "-y", "-f", "concat", "-safe", "0", "-i", list_path,
-                        "-c:v", "libx264", "-preset", "ultrafast", "-threads", "4",
+                        *video_encode_args,
                         "-c:a", "aac", "-b:a", "192k",
                         "-movflags", "+faststart",
                         temp_output_path
@@ -1279,17 +1288,17 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
                         offset = max(0.0, cumulative - (i + 1) * xfade_d)
                         filter_complex.append(
                             f"[v{i}][v{i+1}]xfade=transition={xfade_name}:"
-                            f"duration={xfade_d}:offset={offset:.3f}[v{i+1}];"
-                            f"[a{i}][a{i+1}]acrossfade=d={xfade_d}[a{i+1}]"
+                            f"duration={xfade_d}:offset={offset:.3f}[v{i+1}]"
                         )
 
-                    # Final output — null filters are required so we can map both
-                    # video and audio streams to the named output labels.
+                # Keep audio contiguous and complete. Video crossfades shorten
+                # the visual timeline, so hold the final frame for that lost time.
                     last_v = f"v{len(segment_results) - 1}"
-                    last_a = f"a{len(segment_results) - 1}"
+                    audio_inputs = "".join(f"[a{i}]" for i in range(len(segment_results)))
+                    video_extension = xfade_d * max(0, len(segment_results) - 1)
                     filter_complex.append(
-                        f"[{last_v}]null[outv];"
-                        f"[{last_a}]anull[outa]"
+                        f"[{last_v}]tpad=stop_mode=clone:stop_duration={video_extension:.3f},null[outv];"
+                        f"{audio_inputs}concat=n={len(segment_results)}:v=0:a=1[outa]"
                     )
 
                     filter_complex_str = ';'.join(filter_complex)
@@ -1303,7 +1312,7 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
                     ] + inputs + [
                         "-filter_complex", filter_complex_str,
                         "-map", "[outv]", "-map", "[outa]",
-                        "-c:v", "libx264", "-preset", "ultrafast", "-threads", "4",
+                    *video_encode_args,
                         "-c:a", "aac", "-b:a", "192k",
                         "-movflags", "+faststart",
                         temp_output_path
@@ -1315,9 +1324,8 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
                 # Fallback to simple concat (list_path already exists)
                 cmd_concat = [
                     FFMPEG_EXE, "-y", "-f", "concat", "-safe", "0", "-i", list_path,
-                    "-c:v", "libx264", "-preset", "ultrafast", "-threads", "4",
+                    *video_encode_args,
                     "-c:a", "aac", "-b:a", "192k",
-                    "-af", "acrossfade=d=0.5",  # Simple audio crossfade
                     "-movflags", "+faststart",
                     temp_output_path
                 ]
@@ -1354,7 +1362,7 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
                 logging.info("Last resort: re-encoding all segments...")
                 cmd_last_resort = [
                     FFMPEG_EXE, "-y", "-f", "concat", "-safe", "0", "-i", list_path,
-                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                        *video_encode_args,
                     "-c:a", "aac", "-b:a", "192k",
                     "-movflags", "+faststart",
                     temp_output_path
