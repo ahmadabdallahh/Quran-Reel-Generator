@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1 — 2026-10-25
+
+### Maintenance
+
+- Split the Flask monolith into focused modules while preserving the `main.py`
+  entry point and its compatibility exports.
+
 ## 0.1.0 — 2026-10-25
 
 ### Added
