@@ -24,6 +24,8 @@ import json
 import os
 from typing import List, Optional, Union
 
+from quran_reels.config import BACKGROUND_VIDEO_EXTENSIONS
+
 
 class BackgroundRotator:
     """Manages background video rotation to prevent repetition per video generation."""
@@ -43,13 +45,15 @@ class BackgroundRotator:
 
         style_dir = os.path.join(VISION_DIR, self.style)
         if os.path.isdir(style_dir):
-            files = [f for f in os.listdir(style_dir) if f.lower().endswith('.mp4')]
+            files = [f for f in os.listdir(style_dir)
+                     if f.lower().endswith(BACKGROUND_VIDEO_EXTENSIONS)]
             paths = [os.path.join(style_dir, f) for f in files]
         else:
             # Fallback to pattern-based in main vision folder
             pattern = f"{self.style}_part"
             files = [f for f in os.listdir(VISION_DIR)
-                     if f.startswith(pattern) and f.lower().endswith('.mp4')]
+                     if f.startswith(pattern)
+                     and f.lower().endswith(BACKGROUND_VIDEO_EXTENSIONS)]
             paths = [os.path.join(VISION_DIR, f) for f in files]
 
         # The per-asset score is curated in the manifest after visual review.

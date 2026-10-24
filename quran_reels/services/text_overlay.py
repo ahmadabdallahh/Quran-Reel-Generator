@@ -27,6 +27,7 @@ from quran_reels.config import (
     BACKING_COLOR_RGB,
     BACKING_OPACITY,
     BACKING_PADDING_PX,
+    HIGHLIGHT_COLOR_RGBA,
     SHOW_TEXT_DEFAULT,  # noqa: F401  (re-exported convenience)
     TEXT_FONT_CANDIDATES,
     TEXT_MIN_CONTRAST,
@@ -213,7 +214,7 @@ def _fit_layout(text: str, frame_w: int, frame_h: int, padding: int):
 # ---------------------------------------------------------------------------
 
 def get_highlight_png(out_path: str, w: int, h: int,
-                      color=(255, 205, 92, 120)) -> str:
+                      color=HIGHLIGHT_COLOR_RGBA) -> str:
     """Soft radial-ish glow blob reused behind the active word.
 
     Always (re)writes ``out_path`` — callers scope the filename per

@@ -145,7 +145,7 @@
 
                 <div class="col-span-full">
                     <p class="mb-3 text-[0.95rem] font-semibold text-ink/80" id="templateLabel">اختر المظهر</p>
-                    <div class="template-grid" role="radiogroup" aria-labelledby="templateLabel">
+                    <div class="template-grid" id="templateGrid" role="radiogroup" aria-labelledby="templateLabel">
                         <label class="template-option">
                             <input type="radio" name="template" value="normal" checked />
                             <img src="assets/previews/normal.jpg" alt="" loading="lazy" />
@@ -169,6 +169,18 @@
                     </div>
                 </div>
 
+                <div class="col-span-full animation-choice">
+                    <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80" for="transitionStyleSelect">حركة الانتقال بين الآيات</label>
+                    <select id="transitionStyleSelect" class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer focus-visible:outline-none">
+                        <option value="" selected>افتراضي حسب الخلفية</option>
+                        <option value="cinematic">سينمائي هادئ</option>
+                        <option value="dynamic">انتقال متتابع</option>
+                        <option value="smooth">انتقال متباعد</option>
+                        <option value="cut">قطع مباشر</option>
+                    </select>
+                    <p class="mt-1.5 text-sm text-ink/70">تؤثر الحركة على انتقال الصورة فقط؛ تظل التلاوة متصلة دون تغيير.</p>
+                </div>
+
                 <div>
                     <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80" for="formatSelect">تنسيق
                         الفيديو</label>
@@ -181,20 +193,20 @@
                     </select>
                 </div>
 
+                <label class="col-span-full word-highlight-option flex items-start gap-3 px-4 py-4 cursor-pointer select-none"
+                    for="highlightWordsCheckbox">
+                    <input type="checkbox" id="highlightWordsCheckbox" checked
+                        class="mt-0.5 w-5 h-5 shrink-0 rounded cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:outline-none" />
+                    <span class="flex-1">
+                        <span class="word-highlight-title block text-[0.95rem] font-semibold">تظليل الكلمات مع التلاوة
+                            <span class="word-highlight-badge" id="highlightWordsStatus">مفعّل</span></span>
+                        <span class="mt-1 block text-[0.85rem] text-ink/70">يتقدم التظليل الذهبي على كلمات الآية أثناء التلاوة. التوقيت تقديري حسب طول الكلمات.</span>
+                    </span>
+                </label>
+
                 <details class="col-span-full advanced-options">
                     <summary>خيارات إضافية للتصميم والصوت</summary>
                     <div class="advanced-options-content">
-                    <div>
-                        <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80" for="transitionStyleSelect">أسلوب الانتقال</label>
-                        <select id="transitionStyleSelect" class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer focus-visible:outline-none">
-                            <option value="" selected>افتراضي (حسب القالب)</option>
-                            <option value="cinematic">سينمائي: تلاشي بصري هادئ</option>
-                            <option value="dynamic">متحرك: انتقال بين الخلفيات</option>
-                            <option value="smooth">سلس: انتقال متباعد</option>
-                            <option value="cut">قطع مباشر</option>
-                        </select>
-                        <p class="mt-1 text-sm text-ink/70">تتغير الخلفية فقط؛ يبقى صوت التلاوة متصلاً دون تداخل.</p>
-                    </div>
                     <div>
                         <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80" for="textPositionSelect">موضع نص الآية</label>
                         <select id="textPositionSelect" class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition disabled:opacity-45 disabled:cursor-not-allowed" disabled>
@@ -225,16 +237,6 @@
                         </span>
                     </label>
 
-                    <label class="flex items-start gap-3 px-4 py-4 cursor-pointer select-none transition hover:bg-tint"
-                        for="highlightWordsCheckbox">
-                        <input type="checkbox" id="highlightWordsCheckbox" disabled
-                            class="mt-0.5 w-5 h-5 shrink-0 rounded accent-action cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-action/40 focus-visible:outline-none" />
-                        <span class="flex-1">
-                            <span class="block text-[0.95rem] font-semibold text-ink/85">تظليل الكلمات مع التلاوة
-                                (تجريبي)</span>
-                            <span class="mt-1 block text-[0.85rem] text-ink/70">غير متاح حتى تتوفر توقيتات موثوقة للكلمات من مصدر التلاوة.</span>
-                        </span>
-                    </label>
                     </div>
                     </div>
                 </details>
@@ -311,6 +313,10 @@
             </div>
         </section>
     </main>
+
+    <footer class="relative z-10 pb-7 text-center text-xs text-ink/60">
+        <span>الإصدار <span id="appVersion">0.1.0</span></span>
+    </footer>
 
     <script src="main.js"></script>
 </body>

@@ -48,7 +48,8 @@ TEXT_MIN_CONTRAST = 4.5            # WCAG-ish contrast floor vs backdrop
 
 # Feature defaults (request fields may override per call).
 SHOW_TEXT_DEFAULT = True
-HIGHLIGHT_WORDS_DEFAULT = False    # experimental word-level highlighting
+HIGHLIGHT_WORDS_DEFAULT = True     # estimated word timing, enabled by default
+HIGHLIGHT_COLOR_RGBA = (232, 182, 76, 140)  # Honey Gold from the visual theme
 TEXT_POSITION_DEFAULT = "lower"    # ayah-text block anchor: "lower" | "middle"
 TEXT_POSITIONS = ("lower", "middle")
 
@@ -66,11 +67,8 @@ TEXT_STYLE_PROFILES = {
 # =============================================================================
 # Feature flags
 # =============================================================================
-# The text-on-video overlay feature (Arabic text rendering, animations,
-# font selection) has been removed.  The app now produces audio + background
-# video only.  ``FEATURE_FLAGS`` is kept as an empty dict so any legacy
-# ``FEATURE_FLAGS.get(...)`` lookups in callers continue to work without a
-# ``NameError``.
+# ``FEATURE_FLAGS`` remains an empty compatibility mapping. Quran text and
+# estimated word highlighting are controlled by their explicit request flags.
 
 FEATURE_FLAGS = {}
 
@@ -123,7 +121,30 @@ TEMPLATES = {
         'transition': 'wipe',
         'transition_style': 'cinematic',
     },
+    'forest': {
+        'bg_style': 'forest',
+        'transition': 'fade',
+        'transition_style': 'cinematic',
+    },
+    'trees': {
+        'bg_style': 'trees',
+        'transition': 'fade',
+        'transition_style': 'cinematic',
+    },
 }
+
+TEMPLATE_LABELS = {
+    'normal': 'طبيعة',
+    'ramadan': 'ليل',
+    'masjid': 'المسجد',
+    'islamic': 'فن إسلامي',
+    'forest': 'الغابة',
+    'trees': 'الأشجار',
+    'rain': 'أجواء المطر',
+    'nature_vision': 'مشاهد الطبيعة',
+}
+
+BACKGROUND_VIDEO_EXTENSIONS = ('.mp4', '.mov')
 
 # =============================================================================
 # Video transitions (legacy from text-on-video era)

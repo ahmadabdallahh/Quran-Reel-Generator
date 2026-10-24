@@ -27,7 +27,7 @@ Request JSON — one new optional field:
 | Field | Type | Default | Meaning |
 |-------|------|---------|---------|
 | `show_text` | boolean | `true` | Render the recited ayah's Arabic text on each segment. `false` reproduces today's audio+background-only output exactly (SC-005). |
-| `highlight_words` | boolean | `false` | Experimental karaoke-style word highlighting; requires `show_text`. Falls back to plain display when timings are unavailable (FR-011). |
+| `highlight_words` | boolean | `true` | Best-effort karaoke-style word highlighting; requires `show_text`. Word windows are estimated from text length over the ayah duration and fall back to plain display when unavailable. |
 | `text_position` | string | `"lower"` | Text block anchor: `"lower"` (lower-center) or `"middle"` (vertically centered). Unknown values fall back to `"lower"`. |
 
 Unknown/absent → default applies. `camelCase` aliases (`showText`, `highlightWords`, `textPosition`) are accepted.

@@ -18,11 +18,12 @@ import re
 import tempfile
 import atexit
 
-from flask import Flask, request, jsonify, send_file, send_from_directory
+from flask import Flask, request, jsonify, send_file, send_from_directory, url_for
 import requests as http_requests
 from urllib3.util.retry import Retry
 from urllib3 import disable_warnings
 disable_warnings()
+from quran_reels import __version__ as APP_VERSION
 
 # =============================================================================
 # STEP 0: ENVIRONMENT LOADING  (refactor P1-9)
@@ -85,6 +86,8 @@ from quran_reels.config import (
     QUALITY_PRESETS,
     OUTPUT_FORMATS,
     TEMPLATES,
+    TEMPLATE_LABELS,
+    BACKGROUND_VIDEO_EXTENSIONS,
     VIDEO_TRANSITIONS,
     VERSE_COUNTS,
     SURAH_NAMES,
@@ -164,6 +167,41 @@ VIDEO_DIR = _env_path("QURAN_VIDEO_DIR", os.path.join(OUT_DIR, "video"))
 BG_CACHE_DIR = _env_path("QURAN_BG_CACHE_DIR", os.path.join("cache", "backgrounds"))
 VISION_DIR = _env_path("QURAN_VISION_DIR", "vision")
 UI_PATH = _env_path("QURAN_UI_PATH", "UI.html")
+
+def get_available_templates():
+    """Return configured themes plus any media-backed folders in VISION_DIR."""
+    available = {}
+    configured_styles = {item['bg_style'].casefold() for item in TEMPLATES.values()}
+
+    for key, config in TEMPLATES.items():
+        style_dir = os.path.join(VISION_DIR, config['bg_style'])
+        if not os.path.isdir(style_dir):
+            continue
+        if any(
+            os.path.isfile(os.path.join(style_dir, name))
+            and name.lower().endswith(BACKGROUND_VIDEO_EXTENSIONS)
+            for name in os.listdir(style_dir)
+        ):
+            available[key] = config
+
+    if os.path.isdir(VISION_DIR):
+        for name in sorted(os.listdir(VISION_DIR), key=str.casefold):
+            folder = os.path.join(VISION_DIR, name)
+            key = name.casefold()
+            if (not os.path.isdir(folder) or key in configured_styles
+                    or not re.fullmatch(r'[a-z0-9][a-z0-9_-]*', key)):
+                continue
+            if any(
+                os.path.isfile(os.path.join(folder, file_name))
+                and file_name.lower().endswith(BACKGROUND_VIDEO_EXTENSIONS)
+                for file_name in os.listdir(folder)
+            ):
+                available[key] = {
+                    'bg_style': name,
+                    'transition': 'fade',
+                    'transition_style': 'cinematic',
+                }
+    return available
 
 def _resolve_ffmpeg_bin(name: str) -> str:
     """Resolve ffmpeg/ffprobe with env var > portable bin > PATH fallback."""
@@ -890,10 +928,9 @@ def process_single_ayah_ffmpeg(args):
         text_png_path = None
         timed_text_overlays = []
         highlight = None
-        # Word timing is not provided by the audio sources. The existing
-        # proportional estimate is not authoritative recitation timing, so
-        # keep exports at accurate ayah-level sync until timestamps exist.
-        use_highlight = False
+        # The current audio sources do not provide word timestamps. Enable
+        # best-effort character-weighted timing, and label it as estimated.
+        use_highlight = bool(show_text and highlight_words)
         bismillah_lead = should_show_bismillah_visual(
             include_bismillah, surah, ayah)
         lead_end = min(BISMILLAH_DURATION_SEC, duration)
@@ -905,8 +942,8 @@ def process_single_ayah_ffmpeg(args):
                 frame_h=frame_size[1], position=text_position)
             timed_text_overlays.append((bismillah_path, 0.0, lead_end))
             add_log("Bismillah: visual lead-in over ayah audio; no added silence")
-        if show_text and highlight_words:
-            add_log(f"highlight: unavailable, no verified word timestamps ({surah}:{ayah})")
+        if use_highlight:
+            add_log(f"highlight: estimated word timing ({surah}:{ayah})")
         if show_text:
             add_log(f"text: fetching ({surah}:{ayah})")
             try:
@@ -920,7 +957,7 @@ def process_single_ayah_ffmpeg(args):
                 ayah_text_str,
                 current_job().text_png_path(idx),
                 template=template,
-                duration_sec=duration,
+                duration_sec=max(0.0, duration - lead_end) if bismillah_lead else duration,
                 frame_w=frame_size[0],
                 frame_h=frame_size[1],
                 with_highlight=use_highlight,
@@ -935,12 +972,18 @@ def process_single_ayah_ffmpeg(args):
             add_log(f"text: rendered ({surah}:{ayah})")
             if use_highlight:
                 if meta.get("windows") and meta.get("highlight"):
+                    highlight_windows = meta["windows"]
+                    if bismillah_lead:
+                        highlight_windows = [
+                            (round(start + lead_end, 2), round(end + lead_end, 2))
+                            for start, end in highlight_windows
+                        ]
                     highlight = {
                         "png": meta["highlight"]["png"],
                         "w": meta["highlight"]["w"],
                         "h": meta["highlight"]["h"],
                         "words": meta["words"],
-                        "windows": meta["windows"],
+                        "windows": highlight_windows,
                     }
                     add_log(f"highlight: on ({surah}:{ayah}, "
                             f"{len(meta['words'])} words)")
@@ -1030,7 +1073,7 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
         video_encode_args = _video_encoding_args(quality_config)
         format_config = OUTPUT_FORMATS.get(format_type, OUTPUT_FORMATS['reels'])
         frame_size = tuple(format_config['size'])
-        template_config = TEMPLATES.get(template, TEMPLATES['normal'])
+        template_config = get_available_templates().get(template, TEMPLATES['normal'])
         if transition_style_override:
             # Caller (UI/API) picked an explicit style; shallow-copy so we
             # don't mutate the shared TEMPLATES dict.
@@ -1676,7 +1719,7 @@ BG_CACHE = {}
 def init_bg_cache():
     """Scan background folders once at startup"""
     global BG_CACHE
-    styles = ['nature', 'islamic', 'masjid', 'night']  # Removed 'colorful'
+    styles = sorted({config['bg_style'] for config in get_available_templates().values()})
 
     for style in styles:
         style_dir = os.path.join(VISION_DIR, style)
@@ -1684,7 +1727,8 @@ def init_bg_cache():
 
         # Check if style folder exists
         if os.path.isdir(style_dir):
-            files = [f for f in os.listdir(style_dir) if f.lower().endswith('.mp4')]
+            files = [f for f in os.listdir(style_dir)
+                     if f.lower().endswith(BACKGROUND_VIDEO_EXTENSIONS)]
             logging.debug(f"Found {len(files)} files in {style_dir}/")
         else:
             # Fallback: try old pattern-based naming in main vision folder
@@ -1692,7 +1736,7 @@ def init_bg_cache():
             space_pattern = pattern.replace('_', ' ')
             files = [f for f in os.listdir(VISION_DIR)
                      if (f.startswith(pattern) or f.startswith(space_pattern))
-                     and f.lower().endswith('.mp4')]
+                     and f.lower().endswith(BACKGROUND_VIDEO_EXTENSIONS)]
             if files:
                 logging.debug(f"Fallback: Found {len(files)} files with pattern '{pattern}' in main folder")
 
@@ -1855,7 +1899,7 @@ def _validated_api_payload():
         return None, (jsonify({'error': 'جودة الفيديو المختارة غير صالحة'}), 400)
     if format_type not in OUTPUT_FORMATS:
         return None, (jsonify({'error': 'تنسيق الفيديو المختار غير صالح'}), 400)
-    if template not in TEMPLATES:
+    if template not in get_available_templates():
         return None, (jsonify({'error': 'القالب المختار غير صالح'}), 400)
     if transition_style not in (None, 'cinematic', 'dynamic', 'smooth', 'cut'):
         return None, (jsonify({'error': 'أسلوب الانتقال المختار غير صالح'}), 400)
@@ -1981,13 +2025,35 @@ def preview_video():
 
 @app.route('/api/config', methods=['GET'])
 def get_config():
+    themes = []
+    for key, config in get_available_templates().items():
+        style = config['bg_style']
+        style_dir = os.path.join(VISION_DIR, style)
+        if not os.path.isdir(style_dir):
+            continue
+        files = sorted(
+            (name for name in os.listdir(style_dir)
+             if os.path.isfile(os.path.join(style_dir, name))
+             and name.lower().endswith(BACKGROUND_VIDEO_EXTENSIONS)),
+            key=str.casefold,
+        )
+        if not files:
+            continue
+        themes.append({
+            'key': key,
+            'label': TEMPLATE_LABELS.get(key, key.replace('_', ' ').title()),
+            'previewUrl': url_for('serve_vision', filename=f'{style}/{files[0]}'),
+            'videoCount': len(files),
+        })
     return jsonify({
+        'version': APP_VERSION,
         'surahs': SURAH_NAMES,
         'verseCounts': VERSE_COUNTS,
         'reciters': RECITERS_MAP,
         'qualityPresets': list(QUALITY_PRESETS.keys()),
         'outputFormats': list(OUTPUT_FORMATS.keys()),
-        'templates': list(TEMPLATES.keys()),
+        'templates': [theme['key'] for theme in themes],
+        'themes': themes,
     })
 
 @app.route('/vision/<path:filename>')

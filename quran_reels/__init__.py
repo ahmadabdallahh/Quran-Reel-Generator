@@ -8,15 +8,18 @@ the leaf modules have been extracted from ``main.py``:
   * :mod:`quran_reels.services.background` — ``BackgroundRotator`` and
     its module-level helpers.
 
-The text-on-video feature (Arabic text overlay, fonts, animations) has
-been removed.  The app now produces audio + background video only.
+Arabic ayah text is rendered as an optional video overlay. Word-level
+highlighting uses an estimated timing window based on each word's length.
 
 ``main.py`` continues to be the entry point and re-exports the public
 names that used to live there, so existing callers
 (``import main; main.build_video(...)``) keep working unchanged.
 """
 
+__version__ = "0.1.0"
+
 __all__ = [
+    "__version__",
     "config",
     "services",
 ]

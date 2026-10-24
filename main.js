@@ -40,6 +40,7 @@ const endAyahInput = document.getElementById('endAyah');
 const reciterSelect = document.getElementById('reciterSelect');
 const qualitySelect = document.getElementById('qualitySelect');
 const formatSelect = document.getElementById('formatSelect');
+const templateGrid = document.getElementById('templateGrid');
 const previewSkeleton = document.getElementById('previewSkeleton');
 const playerFrame = document.getElementById('playerFrame');
 const personNameInput = document.getElementById('personName');
@@ -212,6 +213,9 @@ async function loadConfig() {
     try {
         const response = await fetch(`${API_BASE}/api/config`);
         const data = await response.json();
+        if (data.version) {
+            document.getElementById('appVersion').textContent = data.version;
+        }
 
         // Load Reciters (Synchronize with RECITERS_MAP from backend)
         if (data.reciters) {
@@ -223,9 +227,61 @@ async function loadConfig() {
                 reciterSelect.appendChild(option);
             });
         }
+        if (Array.isArray(data.themes) && data.themes.length) {
+            renderThemeOptions(data.themes);
+        }
     } catch (error) {
         console.error('Failed to load config:', error);
     }
+}
+
+function renderThemeOptions(themes) {
+    const currentTheme = templateGrid.querySelector('input[name="template"]:checked')?.value || 'normal';
+    const numberFormat = new Intl.NumberFormat('ar');
+    const fragment = document.createDocumentFragment();
+
+    themes.forEach((theme, index) => {
+        const label = document.createElement('label');
+        label.className = 'template-option';
+        label.style.setProperty('--theme-index', index);
+
+        const input = document.createElement('input');
+        input.type = 'radio';
+        input.name = 'template';
+        input.value = theme.key;
+        input.checked = theme.key === currentTheme || (!themes.some(item => item.key === currentTheme) && index === 0);
+
+        const video = document.createElement('video');
+        video.className = 'theme-preview';
+        video.src = theme.previewUrl;
+        video.muted = true;
+        video.loop = true;
+        video.playsInline = true;
+        video.preload = 'metadata';
+        video.setAttribute('aria-hidden', 'true');
+
+        const title = document.createElement('span');
+        title.textContent = theme.label;
+
+        const count = document.createElement('small');
+        count.className = 'theme-count';
+        count.textContent = `${numberFormat.format(theme.videoCount)} مقطع`;
+
+        const previewOnIntent = () => {
+            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+            video.play().catch(() => {});
+        };
+        const pauseOnExit = () => video.pause();
+        label.addEventListener('pointerenter', previewOnIntent);
+        label.addEventListener('pointerleave', pauseOnExit);
+        label.addEventListener('focusin', previewOnIntent);
+        label.addEventListener('focusout', pauseOnExit);
+
+        label.append(input, video, title, count);
+        fragment.appendChild(label);
+    });
+
+    templateGrid.replaceChildren(fragment);
 }
 
 // Global alias for compatibility
@@ -481,19 +537,23 @@ retryBtn.addEventListener('click', () => {
     generateBtn.click();
 });
 
-// Word highlighting is unavailable until the audio source provides verified
-// word timestamps. Never expose proportional estimates as recitation sync.
+// Word highlighting uses the renderer's best-effort character-weighted
+// timing estimate; its UI label makes that limitation explicit.
 const showTextCheckbox = document.getElementById('showTextCheckbox');
 const highlightWordsCheckbox = document.getElementById('highlightWordsCheckbox');
 const textPositionSelect = document.getElementById('textPositionSelect');
 
 function syncHighlightToggle() {
-    highlightWordsCheckbox.disabled = true;
-    highlightWordsCheckbox.checked = false;
+    highlightWordsCheckbox.disabled = !showTextCheckbox.checked;
     textPositionSelect.disabled = !showTextCheckbox.checked;
+    const status = document.getElementById('highlightWordsStatus');
+    status.textContent = !showTextCheckbox.checked
+        ? 'يتطلب نص الآية'
+        : (highlightWordsCheckbox.checked ? 'مفعّل' : 'متوقف');
 }
 
 showTextCheckbox.addEventListener('change', syncHighlightToggle);
+highlightWordsCheckbox.addEventListener('change', syncHighlightToggle);
 syncHighlightToggle();
 
 // --- Custom dropdowns (native <select> lists paint OS-blue; the proxy

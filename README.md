@@ -11,6 +11,8 @@ A tool that builds vertical Quran recitation videos (Reels / Shorts / TikTok).
 You pick a reciter, a surah, and the ayahs — the app downloads the audio,
 renders the ayah text on screen, and merges everything over background video.
 
+**Current version: 0.1.0**
+
 **In 30 seconds:** form in → one MP4 out (`outputs/video/`).
 
 ```mermaid
@@ -29,10 +31,10 @@ flowchart LR
 |---|---|
 | Video formats | 9:16 Reels/Story, 1:1 square posts, and 16:9 YouTube |
 | Ayah text on screen | The exact verse being recited appears on the video, timed to its audio |
-| Word highlighting | Unavailable until recitation sources provide verified word timestamps |
+| Word highlighting | On by default; estimates word timing by text length |
 | Text position | Bottom of the video, or centered in the middle |
 | 12+ reciters | AbdulBasit, Sudais, Minshawy, Shuraym, Husary, and more |
-| 4 visual themes | Ramadan, Normal, Masjid, Islamic — each picks its own backgrounds |
+| Background themes | Current folders appear automatically with live previews |
 | Preview player | Test one ayah fast, with play/pause, 0.5–2x speed, fullscreen |
 | Smart and fast | Audio is cached, backgrounds rotate without repeats, parallel building |
 
@@ -151,14 +153,14 @@ card with the video player on the other.
 3. **Surah** — type in the search box to find it fast, then select it.
 4. **Start / End ayah** — the range to include. The app blocks impossible numbers.
 5. **Quality** — Low = fast draft, Medium = everyday use, High = best, slowest.
-6. **Visual theme** — Ramadan / Normal / Masjid / Islamic.
+6. **Visual theme** — choose a folder-backed theme; available folders appear automatically.
 7. **Bismillah visual opening (optional)** — replaces the first 1.8 seconds
    of ayah 1 text over its existing audio; it is not audio-synchronized and
    is skipped for Al-Fatihah and At-Tawbah.
 8. **Show ayah text** — on by default. Off = plain background video, no text.
 9. **Text position** — bottom or middle of the screen (needs step 8 on).
-10. **Word highlighting** — currently unavailable because audio sources do
-    not provide verified word timestamps.
+10. **Word highlighting** — on by default. Timing is estimated from word
+    length across the ayah; it is not a measured word timestamp from the reciter.
 11. **Max duration (optional)** — caps the video length; extra ayahs are dropped.
 12. **Recitation speed** — 0.5x slower … 2x faster, pitch unchanged.
 13. **Transition style** — how segments blend into each other.

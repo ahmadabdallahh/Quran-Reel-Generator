@@ -430,11 +430,12 @@ input:-webkit-autofill {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
+    align-items: start;
 }
 
 @media (min-width: 640px) {
     .template-grid {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 16px;
     }
 }
@@ -453,6 +454,8 @@ input:-webkit-autofill {
     border: 2px solid color-mix(in srgb, var(--color-gold) 24%, transparent);
     border-radius: 18px;
     transition: border-color 180ms ease, background-color 180ms ease, transform 180ms ease;
+    animation: themeReveal 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: calc(var(--theme-index, 0) * 45ms);
 }
 
 .template-option:hover {
@@ -478,12 +481,78 @@ input:-webkit-autofill {
     opacity: 0;
 }
 
-.template-option img {
+.template-option img,
+.template-option .theme-preview {
     display: block;
     width: 100%;
-    aspect-ratio: 9 / 12;
+    aspect-ratio: 16 / 10;
     object-fit: cover;
     border-radius: 11px;
+    background: var(--color-tint-soft);
+}
+
+.template-option .theme-preview {
+    transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1), filter 420ms ease;
+}
+
+.template-option:hover .theme-preview,
+.template-option:focus-within .theme-preview {
+    transform: scale(1.025);
+    filter: saturate(1.06);
+}
+
+.theme-count {
+    color: var(--color-ink);
+    font-size: 0.78rem;
+    font-weight: 500;
+    opacity: 0.68;
+}
+
+.animation-choice {
+    padding: 16px 18px;
+    border: 1px solid color-mix(in srgb, var(--color-gold) 24%, transparent);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--color-card) 82%, var(--color-sand));
+}
+
+.word-highlight-option {
+    align-items: center;
+    border: 1px solid color-mix(in srgb, var(--color-gold) 48%, transparent);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--color-gold) 10%, var(--color-card));
+    box-shadow: inset 3px 0 0 color-mix(in srgb, var(--color-gold) 75%, transparent);
+    transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.word-highlight-option:hover,
+.word-highlight-option:focus-within {
+    border-color: color-mix(in srgb, var(--color-gold) 76%, transparent);
+    background: color-mix(in srgb, var(--color-gold) 15%, var(--color-card));
+}
+
+.word-highlight-option input {
+    accent-color: var(--color-gold);
+}
+
+.word-highlight-title {
+    color: var(--color-ink);
+}
+
+.word-highlight-badge {
+    display: inline-block;
+    margin-inline-start: 0.4rem;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-gold) 28%, white);
+    color: var(--color-ink);
+    font-size: 0.72rem;
+    font-weight: 700;
+    vertical-align: middle;
+}
+
+@keyframes themeReveal {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
 .advanced-options {
@@ -542,6 +611,19 @@ input:-webkit-autofill {
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .template-option {
+        animation: none;
+        transition: none;
+    }
+
+    .template-option .theme-preview {
+        transition: none;
+    }
+
+    .word-highlight-option {
+        transition: none;
+    }
+
     *,
     *::before,
     *::after {
