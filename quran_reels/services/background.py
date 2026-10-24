@@ -22,9 +22,12 @@ from __future__ import annotations
 import logging
 import json
 import os
+import subprocess
 from typing import List, Optional, Union
 
-from quran_reels.config import BACKGROUND_VIDEO_EXTENSIONS
+from quran_reels.config import (
+    BACKGROUND_VIDEO_EXTENSIONS, TARGET_H, TARGET_W,
+)
 
 
 class BackgroundRotator:
@@ -238,3 +241,142 @@ def get_next_background(
         # Fallback to random selection if rotator fails
         logging.warning("Rotator failed, falling back to random selection")
         return pick_bg(style, count)
+
+
+# Legacy background cache helpers remain available through this service.
+BG_CACHE = {}
+def init_bg_cache():
+    """Scan background folders once at startup"""
+    from main import BACKGROUND_VIDEO_EXTENSIONS, VISION_DIR, get_available_templates
+    global BG_CACHE
+    styles = sorted({config['bg_style'] for config in get_available_templates().values()})
+
+    for style in styles:
+        style_dir = os.path.join(VISION_DIR, style)
+        files = []
+
+        # Check if style folder exists
+        if os.path.isdir(style_dir):
+            files = [f for f in os.listdir(style_dir)
+                     if f.lower().endswith(BACKGROUND_VIDEO_EXTENSIONS)]
+            logging.debug(f"Found {len(files)} files in {style_dir}/")
+        else:
+            # Fallback: try old pattern-based naming in main vision folder
+            pattern = f"{style}_part"
+            space_pattern = pattern.replace('_', ' ')
+            files = [f for f in os.listdir(VISION_DIR)
+                     if (f.startswith(pattern) or f.startswith(space_pattern))
+                     and f.lower().endswith(BACKGROUND_VIDEO_EXTENSIONS)]
+            if files:
+                logging.debug(f"Fallback: Found {len(files)} files with pattern '{pattern}' in main folder")
+
+        BG_CACHE[style] = files
+        BG_CACHE[f"{style}_part"] = files  # Also store by pattern for fallback
+
+    logging.debug(f"BG cache initialized: {len(BG_CACHE)} styles")
+def pick_bg(style='nature', count=1):
+    """Select background video(s) from style-specific folders"""
+    from main import VISION_DIR
+    init_bg_cache() # Refresh list of available files
+
+    files = BG_CACHE.get(style, [])
+
+    # Fallback to nature if style has no files
+    if not files:
+        files = BG_CACHE.get('nature', [])
+
+    if not files:
+        raise ValueError(f"No background videos found for style '{style}' or 'nature'")
+
+    if count == 1:
+        # Return full path to the selected file
+        selected_file = sorted(files, key=str.casefold)[0]
+        style_dir = os.path.join(VISION_DIR, style)
+
+        # Check if style folder exists, fallback to main vision folder
+        if os.path.isdir(style_dir):
+            return os.path.join(style_dir, selected_file)
+        else:
+            return os.path.join(VISION_DIR, selected_file)
+    else:
+        selected = sorted(files, key=str.casefold)[:min(count, len(files))]
+        style_dir = os.path.join(VISION_DIR, style)
+
+        if os.path.isdir(style_dir):
+            return [os.path.join(style_dir, f) for f in selected]
+        else:
+            return [os.path.join(VISION_DIR, f) for f in selected]
+def get_preprocessed_bg(bg_path, target_w=TARGET_W, target_h=TARGET_H):
+    """Get or create preprocessed background video (cached)"""
+    from main import BG_CACHE_DIR, FFMPEG_EXE, FFPROBE_EXE
+    os.makedirs(BG_CACHE_DIR, exist_ok=True)
+    base = os.path.splitext(os.path.basename(bg_path))[0]
+    cached_path = os.path.join(BG_CACHE_DIR, f"{base}_{target_w}x{target_h}.mp4")
+
+    if os.path.isfile(cached_path):
+        # Check if file is valid (not 0 or too small, which indicates corruption)
+        if os.path.getsize(cached_path) > 5000:  # At least 5KB
+            # Additional validation: try to read the file with FFprobe
+            try:
+                result = subprocess.run([
+                    FFPROBE_EXE,
+                    '-v', 'error',
+                    '-show_format',
+                    '-show_streams',
+                    cached_path
+                ], capture_output=True, text=True, timeout=10)
+                if result.returncode == 0:
+                    logging.debug(f"Using cached background: {os.path.basename(cached_path)}")
+                    return cached_path
+                else:
+                    logging.warning(f"Corrupted cache file (FFprobe failed): {cached_path}")
+            except Exception as e:
+                logging.warning(f"Cache validation failed: {e}")
+
+            # Remove corrupted file
+            try:
+                os.remove(cached_path)
+                logging.info(f"Removed corrupted cache file: {cached_path}")
+            except:
+                pass
+        else:
+            logging.warning(f"Cache file too small: {cached_path}")
+            try:
+                os.remove(cached_path)
+            except:
+                pass
+
+    # Normalize BG to avoid FFmpeg concat/filter issues (fps/pix_fmt/scale)
+    logging.info(f"Preprocessing background: {os.path.basename(bg_path)}")
+    vf = f"scale={target_w}:{target_h}:force_original_aspect_ratio=increase,crop={target_w}:{target_h},fps=30,format=yuv420p"
+    cmd = [
+        FFMPEG_EXE, "-y", "-i", bg_path,
+        "-vf", vf, "-an",
+        "-r", "30",
+        "-c:v", "libx264",
+        "-preset", "ultrafast", "-crf", "32", "-threads", "4",
+        "-pix_fmt", "yuv420p",
+        cached_path
+    ]
+
+    try:
+        logging.info(f"Running FFmpeg preprocessing: {' '.join(cmd[:8])}...")
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
+
+        # Verify the output file was created successfully
+        if os.path.exists(cached_path) and os.path.getsize(cached_path) > 5000:
+            logging.info(f"Background cached successfully: {os.path.basename(cached_path)}")
+            return cached_path
+        else:
+            logging.error(f"FFmpeg output file invalid: {cached_path}")
+            return bg_path  # Fallback to original
+
+    except subprocess.TimeoutExpired:
+        logging.warning(f"Background preprocessing timeout, using original: {os.path.basename(bg_path)}")
+        return bg_path  # Fallback to original
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Background preprocessing failed: {e.stderr}")
+        return bg_path  # Fallback to original
+    except Exception as e:
+        logging.error(f"Unexpected error in preprocessing: {e}")
+        return bg_path  # Fallback to original

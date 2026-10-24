@@ -84,9 +84,12 @@ _circuit_lock = threading.Lock()
 
 
 def is_circuit_breaker_open() -> bool:
+    global _circuit_breaker_failures, _circuit_breaker_last_failure
     with _circuit_lock:
         if _circuit_breaker_failures >= _circuit_breaker_threshold:
             if time.time() - _circuit_breaker_last_failure > _circuit_breaker_timeout:
+                _circuit_breaker_failures = 0
+                _circuit_breaker_last_failure = 0.0
                 return False
             return True
         return False

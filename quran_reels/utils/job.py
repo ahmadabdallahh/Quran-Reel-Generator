@@ -37,6 +37,14 @@ class JobContext:
         from main import TEMP_DIR
         return os.path.join(TEMP_DIR, f"{self.job_id}_segment_{idx:03d}.mp4")
 
+    def text_png_path(self, idx: int) -> str:
+        from main import TEMP_DIR
+        return os.path.join(TEMP_DIR, f"{self.job_id}_text_{idx:03d}.png")
+
+    def highlight_png(self, idx: int) -> str:
+        from main import TEMP_DIR
+        return os.path.join(TEMP_DIR, f"{self.job_id}_highlight_{idx:03d}.png")
+
     # ---- concat / chunk / final-output paths ----
     def concat_list_path(self) -> str:
         from main import TEMP_DIR

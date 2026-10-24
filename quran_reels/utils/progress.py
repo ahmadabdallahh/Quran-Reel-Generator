@@ -25,6 +25,7 @@ Migration in ``main.py``:
 """
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass, field
 from threading import RLock
@@ -140,3 +141,45 @@ class ProgressState:
 # thread started by /api/generate and /api/preview both reach for this
 # single instance.  Importing it gives every caller the same object.
 current_progress = ProgressState()
+
+
+def reset_progress() -> None:
+    """Reset the shared progress state to a fresh-build snapshot."""
+    current_progress.reset()
+
+
+def add_log(message: str) -> None:
+    """Append a progress log entry and mirror it to the application log."""
+    current_progress.append_log(message)
+    logging.info(f"PROGRESS: {message}")
+
+
+def update_progress(percent, status, stage=None, current_ayah=None,
+                    total_ayat=None) -> None:
+    """Update progress fields and ETA atomically."""
+    updates = {'percent': percent, 'status': status}
+    if stage is not None:
+        updates['stage'] = stage
+    if current_ayah is not None:
+        updates['current_ayah'] = current_ayah
+    if total_ayat is not None:
+        updates['total_ayat'] = total_ayat
+
+    with current_progress._lock:
+        current_progress.set(**updates)
+        current_progress.calculate_eta()
+
+    logging.info(f"STATUS ({percent}%): {status}")
+
+
+def update_ayah_progress(current, total, stage='processing') -> None:
+    """Update progress for one ayah within the current render."""
+    percent = int(10 + (70 * current / total)) if total > 0 else 10
+    status = f'معالجة الآية {current} من {total}...'
+    update_progress(
+        percent=percent,
+        status=status,
+        stage=stage,
+        current_ayah=current,
+        total_ayat=total,
+    )
