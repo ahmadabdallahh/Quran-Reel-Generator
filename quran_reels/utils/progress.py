@@ -26,9 +26,10 @@ Migration in ``main.py``:
 from __future__ import annotations
 
 import logging
+import subprocess
 import time
 from dataclasses import dataclass, field
-from threading import RLock
+from threading import Event, RLock
 from typing import List, Optional
 
 
@@ -36,6 +37,10 @@ from typing import List, Optional
 # (e.g. imported before any work has started) shows a friendly message
 # on the first poll rather than an empty string.
 DEFAULT_STATUS_AR = 'جاري التحضير...'
+
+
+class OperationCancelled(Exception):
+    """Raised when the user requests cancellation of the active render."""
 
 
 @dataclass
@@ -47,6 +52,8 @@ class ProgressState:
     status:       str                = DEFAULT_STATUS_AR
     is_running:   bool               = False
     is_complete:  bool               = False
+    is_cancelled: bool               = False
+    cancel_requested: bool           = False
     output_path:  Optional[str]      = None
     error:        Optional[str]      = None
     current_ayah: int                = 0
@@ -58,6 +65,7 @@ class ProgressState:
     # --- Internal ---
     log:   List[str] = field(default_factory=list)
     _lock: RLock     = field(default_factory=RLock, repr=False)
+    _cancel_event: Event = field(default_factory=Event, repr=False)
 
     # --- Atomic mutators ---
 
@@ -110,6 +118,8 @@ class ProgressState:
                 'status':       self.status,
                 'is_running':   self.is_running,
                 'is_complete':  self.is_complete,
+                'is_cancelled': self.is_cancelled,
+                'cancel_requested': self.cancel_requested,
                 'output_path':  self.output_path,
                 'error':        self.error,
                 'current_ayah': self.current_ayah,
@@ -128,6 +138,9 @@ class ProgressState:
             self.log          = []
             self.is_running   = False
             self.is_complete  = False
+            self.is_cancelled = False
+            self.cancel_requested = False
+            self._cancel_event.clear()
             self.output_path  = None
             self.error        = None
             self.current_ayah = 0
@@ -141,6 +154,71 @@ class ProgressState:
 # thread started by /api/generate and /api/preview both reach for this
 # single instance.  Importing it gives every caller the same object.
 current_progress = ProgressState()
+
+
+def request_cancel() -> bool:
+    """Ask the active render to stop; return False when nothing is running."""
+    with current_progress._lock:
+        if not current_progress.is_running:
+            return False
+        current_progress.cancel_requested = True
+        current_progress.status = 'جاري إلغاء العملية...'
+        current_progress._cancel_event.set()
+    return True
+
+
+def raise_if_cancelled() -> None:
+    if current_progress._cancel_event.is_set():
+        raise OperationCancelled('تم إلغاء العملية بواسطة المستخدم')
+
+
+def run_cancellable(command, *, check=False, capture_output=False,
+                    text=False, timeout=None):
+    """Run a child process that can be terminated by the cancel button."""
+    raise_if_cancelled()
+    stdout_pipe = subprocess.PIPE if capture_output else None
+    stderr_pipe = subprocess.PIPE if capture_output else None
+    process = subprocess.Popen(
+        command, stdout=stdout_pipe, stderr=stderr_pipe, text=text,
+    )
+    started = time.monotonic()
+    stdout = stderr = None
+    while True:
+        if current_progress._cancel_event.is_set():
+            if process.poll() is None:
+                try:
+                    process.terminate()
+                except ProcessLookupError:
+                    pass
+            try:
+                stdout, stderr = process.communicate(timeout=2)
+            except subprocess.TimeoutExpired:
+                if process.poll() is None:
+                    process.kill()
+                stdout, stderr = process.communicate()
+            raise OperationCancelled('تم إلغاء العملية بواسطة المستخدم')
+
+        remaining = None if timeout is None else timeout - (time.monotonic() - started)
+        if remaining is not None and remaining <= 0:
+            if process.poll() is None:
+                process.kill()
+            stdout, stderr = process.communicate()
+            raise subprocess.TimeoutExpired(command, timeout, output=stdout, stderr=stderr)
+        wait_for = 0.2 if remaining is None else min(0.2, remaining)
+        try:
+            stdout, stderr = process.communicate(timeout=wait_for)
+            break
+        except subprocess.TimeoutExpired:
+            continue
+
+    if current_progress._cancel_event.is_set():
+        raise OperationCancelled('تم إلغاء العملية بواسطة المستخدم')
+    completed = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+    if check and process.returncode:
+        raise subprocess.CalledProcessError(
+            process.returncode, command, output=stdout, stderr=stderr,
+        )
+    return completed
 
 
 def reset_progress() -> None:

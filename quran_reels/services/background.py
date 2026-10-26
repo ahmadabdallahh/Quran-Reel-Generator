@@ -30,6 +30,7 @@ from typing import List, Optional, Union
 from quran_reels.config import (
     BACKGROUND_VIDEO_EXTENSIONS, TARGET_H, TARGET_W,
 )
+from quran_reels.utils.progress import OperationCancelled, run_cancellable
 
 
 class BackgroundRotator:
@@ -379,7 +380,7 @@ def get_preprocessed_bg(bg_path, target_w=TARGET_W, target_h=TARGET_H):
 
         try:
             logging.info(f"Preprocessing background: {os.path.basename(bg_path)}")
-            subprocess.run(
+            run_cancellable(
                 cmd, check=True, capture_output=True, text=True, timeout=120,
             )
             if not os.path.isfile(temp_path) or os.path.getsize(temp_path) <= 5000:
@@ -394,6 +395,8 @@ def get_preprocessed_bg(bg_path, target_w=TARGET_W, target_h=TARGET_H):
             os.replace(temp_path, cached_path)
             logging.info(f"Background cached successfully: {os.path.basename(cached_path)}")
             return cached_path
+        except OperationCancelled:
+            raise
         except subprocess.TimeoutExpired:
             logging.warning(
                 f"Background preprocessing timeout, using original: {os.path.basename(bg_path)}"

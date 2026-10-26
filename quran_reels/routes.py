@@ -156,6 +156,16 @@ def get_progress():
     return jsonify(current_progress.to_dict())
 
 
+def cancel_operation():
+    """Request cancellation of the active video render."""
+    from flask import jsonify
+    from main import add_log, current_progress, request_cancel
+    if not request_cancel():
+        return jsonify({'error': 'لا توجد عملية قيد التنفيذ لإلغائها'}), 409
+    add_log('تم طلب إلغاء العملية؛ يجري إيقاف المعالجة الحالية...')
+    return jsonify({'success': True, 'message': 'جاري إلغاء العملية'})
+
+
 def preview_video():
     """Generate a preview of the first ayah (one verse)."""
     import threading
@@ -252,6 +262,7 @@ def register_routes(app):
         ('/assets/<path:filename>', 'serve_asset', ('GET',)),
         ('/api/generate', 'generate_video', ('POST',)),
         ('/api/progress', 'get_progress', ('GET',)),
+        ('/api/cancel', 'cancel_operation', ('POST',)),
         ('/api/preview', 'preview_video', ('POST',)),
         ('/api/config', 'get_config', ('GET',)),
         ('/vision/<path:filename>', 'serve_vision', ('GET',)),

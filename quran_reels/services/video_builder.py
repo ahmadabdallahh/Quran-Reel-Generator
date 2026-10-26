@@ -30,6 +30,7 @@ from quran_reels.services.background import init_background_rotator
 from quran_reels.utils.job import current_job, start_new_job
 from quran_reels.utils.progress import (
     add_log, current_progress, update_progress,
+    OperationCancelled, run_cancellable, raise_if_cancelled,
 )
 from quran_reels.services.themes import get_available_templates
 
@@ -206,7 +207,7 @@ def _run_concat_with_fallback(command, list_path, video_encode_args, output_path
         if command is None:
             raise ValueError("No concat command generated")
         logging.info(f"Running Concat: {' '.join(command)}")
-        subprocess.run(command, check=True, capture_output=True, text=True, timeout=600)
+        run_cancellable(command, check=True, capture_output=True, text=True, timeout=600)
     except subprocess.CalledProcessError as exc:
         logging.error("FFmpeg Concat Failed with crossfade effects!")
         logging.error(f"STDOUT: {exc.stdout}")
@@ -218,7 +219,7 @@ def _run_concat_with_fallback(command, list_path, video_encode_args, output_path
         ]
         try:
             logging.info(f"Running Fallback: {' '.join(fallback)}")
-            subprocess.run(fallback, check=True, capture_output=True, text=True, timeout=600)
+            run_cancellable(fallback, check=True, capture_output=True, text=True, timeout=600)
         except subprocess.CalledProcessError as fallback_error:
             logging.error("Fallback also failed!")
             logging.error(f"Fallback STDERR: {fallback_error.stderr}")
@@ -229,7 +230,7 @@ def _run_concat_with_fallback(command, list_path, video_encode_args, output_path
                 "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
                 output_path,
             ]
-            subprocess.run(
+            run_cancellable(
                 last_resort, check=True, capture_output=True, text=True, timeout=600,
             )
 
@@ -421,6 +422,7 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
         # a previous run.
         start_new_job()
         current_progress.set(is_running=True, is_complete=False, error=None)
+        raise_if_cancelled()
 
         settings = _prepare_render_config(
             reciter_id, surah, start_ayah, end_ayah, quality, format_type,
@@ -448,9 +450,11 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
         segment_results = _render_ayah_segments(
             ayah_args, max_workers, total, surah, include_bismillah,
         )
+        raise_if_cancelled()
         _concatenate_segments(
             segment_results, template_config, video_encode_args, temp_output_path,
         )
+        raise_if_cancelled()
         if os.path.exists(temp_output_path):
             shutil.move(temp_output_path, output_path)
 
@@ -466,6 +470,14 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
 
         return output_path
 
+    except OperationCancelled:
+        logging.info("Video generation cancelled by user")
+        add_log('تم إلغاء العملية. يمكنك تعديل الاختيارات والمحاولة مجدداً.')
+        current_progress.set(
+            is_cancelled=True, is_complete=False, output_path=None, error=None,
+            status='تم إلغاء العملية', stage='cancelled',
+        )
+        return None
     except Exception as e:
         logging.exception("Error in build_video")
         current_progress.set(error=str(e))

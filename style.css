@@ -583,7 +583,8 @@ input:-webkit-autofill {
 }
 
 .inline-error[hidden],
-.retry-button[hidden] {
+.retry-button[hidden],
+.cancel-button[hidden] {
     display: none;
 }
 
@@ -602,6 +603,46 @@ input:-webkit-autofill {
     background: var(--color-action);
     border-radius: 12px;
     cursor: pointer;
+}
+
+.cancel-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    margin: 10px 0;
+    padding: 10px 16px;
+    color: #8a2f24;
+    font-weight: 700;
+    background: #fff1ed;
+    border: 1px solid #d89886;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background-color 160ms ease, border-color 160ms ease, opacity 160ms ease;
+}
+
+.cancel-button:hover:not(:disabled) {
+    background: #ffe5de;
+    border-color: #c87968;
+}
+
+.cancel-button:focus-visible {
+    outline: 3px solid color-mix(in srgb, #8a2f24 35%, transparent);
+    outline-offset: 2px;
+}
+
+.cancel-button:disabled {
+    opacity: 0.72;
+    cursor: wait;
+}
+
+.cancel-button svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
 }
 
 @media (max-width: 639px) {

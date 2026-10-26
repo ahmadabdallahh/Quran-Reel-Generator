@@ -73,6 +73,7 @@ const logTerminal = document.getElementById('logTerminal');
 const formError = document.getElementById('formError');
 const renderEta = document.getElementById('renderEta');
 const retryBtn = document.getElementById('retryBtn');
+const cancelBtn = document.getElementById('cancelBtn');
 
 const videoPreviewWrapper = document.getElementById('videoPreviewWrapper');
 const previewVideo = document.getElementById('previewVideo');
@@ -299,7 +300,7 @@ async function pollProgress() {
         const res = await fetch(`${API_BASE}/api/progress`);
         const data = await res.json();
 
-        if (data.is_running || data.is_complete || data.error) {
+        if (data.is_running || data.is_complete || data.is_cancelled || data.error) {
             statusCard.classList.add('active');
             updateUI(data);
         }
@@ -308,6 +309,7 @@ async function pollProgress() {
             progressInterval = setInterval(pollProgress, 1000);
             generateBtn.disabled = true;
             generateBtn.innerHTML = WORKING_LABEL;
+            previewBtn.disabled = true;
         } else if (!data.is_running && progressInterval) {
             clearInterval(progressInterval);
             progressInterval = null;
@@ -363,6 +365,11 @@ function updateUI(data) {
         renderEta.textContent = data.is_running ? `المرحلة: ${data.stage || 'جاري المعالجة'}` : '';
     }
     retryBtn.hidden = !data.error;
+    cancelBtn.hidden = !data.is_running;
+    cancelBtn.disabled = Boolean(data.cancel_requested);
+    cancelBtn.querySelector('.cancel-label').textContent = data.cancel_requested
+        ? 'جارٍ الإلغاء...'
+        : 'إلغاء العملية';
 
     if (data.is_running) {
         setPlayerState('building');
@@ -411,6 +418,22 @@ function updateUI(data) {
         setPlayerState(previewVideo.src ? 'ready' : 'idle');
     }
 }
+
+cancelBtn.addEventListener('click', async () => {
+    cancelBtn.disabled = true;
+    cancelBtn.querySelector('.cancel-label').textContent = 'جارٍ الإلغاء...';
+    try {
+        const res = await fetch(`${API_BASE}/api/cancel`, { method: 'POST' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'تعذر إلغاء العملية.');
+        pollProgress();
+    } catch (e) {
+        cancelBtn.disabled = false;
+        cancelBtn.querySelector('.cancel-label').textContent = 'إلغاء العملية';
+        formError.textContent = e.message;
+        formError.hidden = false;
+    }
+});
 
 // --- Event Handlers ---
 

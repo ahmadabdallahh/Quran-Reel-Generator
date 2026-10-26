@@ -23,7 +23,9 @@ from quran_reels.services.background import (
 )
 from quran_reels.services.text_overlay import render_ayah_text_png
 from quran_reels.utils.job import _job_local, current_job
-from quran_reels.utils.progress import add_log
+from quran_reels.utils.progress import (
+    OperationCancelled, add_log, run_cancellable, raise_if_cancelled,
+)
 
 HIGHLIGHT_MAX_LAYERS = 60
 
@@ -95,7 +97,7 @@ def _premerge_chunks(chunk_groups, segment_results, seg_durations):
             '-movflags', '+faststart',
             out_path,
         ]
-        res = subprocess.run(cmd, capture_output=True, text=True)
+        res = run_cancellable(cmd, capture_output=True, text=True)
         if res.returncode != 0 or not os.path.exists(out_path):
             raise RuntimeError(
                 f"Chunk pre-merge failed for chunk {ci}: {res.stderr.strip()}"
@@ -335,7 +337,7 @@ def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_las
 
     try:
         logging.info(f"Running FFmpeg command (timeout=300s): {' '.join(cmd[:8])}...")
-        result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=300)
+        result = run_cancellable(cmd, check=True, capture_output=True, text=True, timeout=300)
         logging.info(f"FFmpeg completed in {result.stderr.count('frame=')} frames")
     except subprocess.TimeoutExpired:
         logging.error(f"FFmpeg timeout after 300s - this may be due to large background video")
@@ -349,9 +351,11 @@ def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_las
                 fallback_cmd.insert(-1, "-crf")
                 fallback_cmd.insert(-1, "35")
             logging.warning("Trying fallback with lower quality...")
-            result = subprocess.run(fallback_cmd, check=True, capture_output=True, text=True, timeout=180)
+            result = run_cancellable(fallback_cmd, check=True, capture_output=True, text=True, timeout=180)
             if os.path.exists(fallback_cmd[-1]):
                 shutil.move(fallback_cmd[-1], output_path)
+        except OperationCancelled:
+            raise
         except Exception as fallback_e:
             logging.error(f"Fallback also failed: {fallback_e}")
             raise RuntimeError(f"FFmpeg processing failed - try using shorter ayahs or different background")
@@ -393,8 +397,10 @@ def process_single_ayah_ffmpeg(args):
     _job_local.ctx = job
 
     try:
+        raise_if_cancelled()
         # Download audio (no trimming, faster)
         audio_path = download_audio(reciter_id, surah, ayah, idx)
+        raise_if_cancelled()
         # Feature: reciter_speed — apply ffmpeg atempo to speed up / slow
         # down the recitation without changing pitch.  Done as a separate
         # pre-pass so the rest of the pipeline sees a normal mp3 file and
@@ -410,7 +416,7 @@ def process_single_ayah_ffmpeg(args):
                 '-c:a', 'libmp3lame', '-b:a', '192k',
                 sped_path,
             ]
-            res = subprocess.run(cmd, capture_output=True, text=True)
+            res = run_cancellable(cmd, capture_output=True, text=True)
             if res.returncode == 0 and os.path.exists(sped_path):
                 audio_path = sped_path
                 logging.debug(f"Segment {idx}: reciter_speed={reciter_speed} (atempo={atempo:.3f})")

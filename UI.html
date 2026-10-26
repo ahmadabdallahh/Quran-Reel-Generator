@@ -288,6 +288,10 @@
                 <div class="log-line">&gt; <span>بانتظار بدء المهمة...</span></div>
             </div>
             <p id="renderEta" class="render-eta" aria-live="polite"></p>
+            <button id="cancelBtn" type="button" class="cancel-button" hidden>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17" /></svg>
+                <span class="cancel-label">إلغاء العملية</span>
+            </button>
             <button id="retryBtn" type="button" class="retry-button" hidden>إعادة المحاولة</button>
 
             <div id="videoPreviewWrapper" class="video-preview-wrapper mt-8">
@@ -313,7 +317,7 @@
     </main>
 
     <footer class="relative z-10 pb-7 text-center text-xs text-ink/60">
-        <span>الإصدار <span id="appVersion">0.2.0</span></span>
+        <span>الإصدار <span id="appVersion">0.3.0</span></span>
     </footer>
 
     <script src="main.js"></script>

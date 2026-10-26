@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 — 2026-10-26
+
+### Added
+
+- Added a styled cancel button for active video generation and previews.
+- Added cooperative cancellation that terminates active FFmpeg work and reports a cancelled state.
+
 ## 0.2.0 — 2026-10-26
 
 ### Added
