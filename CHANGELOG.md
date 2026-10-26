@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.1 — 2026-10-26
+
+### Improved
+
+- Prefer Amiri Quran with RAQM shaping and retain the bundled Scheherazade
+  font as a deterministic fallback.
+- Add warm ivory, soft gold, and white verse text colors; strengthen the
+  rounded black backing and remove the glyph shadow for clearer reading.
+- Expand and center only exceptionally long ayahs so all text stays on-frame
+  at a readable size.
+
 ## 0.7.0 — 2026-10-26
 
 ### Added

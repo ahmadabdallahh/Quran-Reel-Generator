@@ -41,7 +41,7 @@ from quran_reels.config import (
 
 _FONT_CACHE: dict[int, ImageFont.FreeTypeFont] = {}
 
-_LINE_LEADING = 1.28   # Scheherazade metrics already carry tashkeel headroom
+_LINE_LEADING = 1.08   # Amiri Quran metrics already reserve diacritic headroom
 
 
 # ---------------------------------------------------------------------------
@@ -64,9 +64,11 @@ def _load_font(size_px: int) -> ImageFont.FreeTypeFont:
                 import subprocess
                 try:
                     out = subprocess.run(
-                        ["fc-match", "-f", "%{file}", value],
+                        ["fc-match", "-f", "%{family}\\t%{file}", value],
                         capture_output=True, text=True, timeout=5)
-                    path = out.stdout.strip()
+                    matched_family, _, path = out.stdout.strip().partition("\t")
+                    if value.casefold() not in matched_family.casefold():
+                        path = ""
                 except Exception:
                     path = ""
                 if path and os.path.exists(path):
@@ -113,9 +115,12 @@ def _blend_over(rgb: tuple[int, int, int], alpha: float,
                  for c, bg in zip(rgb, backdrop))  # type: ignore[return-value]
 
 
-def resolve_profile(template: str) -> dict:
+def resolve_profile(template: str, text_color: str | None = None) -> dict:
     """Single source of truth for a job's text styling (FR-009)."""
-    return dict(TEXT_STYLE_PROFILES.get(template, TEXT_STYLE_PROFILES["normal"]))
+    profile = dict(TEXT_STYLE_PROFILES.get(template, TEXT_STYLE_PROFILES["normal"]))
+    if text_color:
+        profile["accent"] = text_color
+    return profile
 
 
 def _guard_contrast(accent_rgb, backing_rgb, opacity) -> tuple[tuple, tuple, float]:
@@ -181,8 +186,7 @@ def _wrap_rtl(measurer: _Measurer, words: list[str], max_width: float):
 
 
 def _fit_layout(text: str, frame_w: int, frame_h: int, padding: int):
-    """Largest font whose wrapped block fits the zone (height governs;
-    the line-count cap is derived from the zone, never clips — FR-006)."""
+    """Fit wrapped text to the normal zone, then expand for long ayahs."""
     max_block_w = frame_w * TEXT_ZONE_MAX_WIDTH_FRAC - 2 * padding
     max_block_h = frame_h * TEXT_ZONE_MAX_HEIGHT_FRAC - 2 * padding
     words = text.split()
@@ -200,13 +204,30 @@ def _fit_layout(text: str, frame_w: int, frame_h: int, padding: int):
         if total_h <= max_block_h:
             chosen = (size, measurer, lines, widths, line_h)
             break
-    if chosen is None:  # legibility floor wins over zone overflow
-        measurer = _Measurer(_load_font(size_min))
+    if chosen is not None:
+        return (*chosen, False)
+
+    # Exceptionally long ayahs (for example 2:282) need more screen area.
+    # Preserve a readable type size and expand toward the center before ever
+    # shrinking below the normal mobile legibility floor.
+    extended_max_h = frame_h * 0.78 - 2 * padding
+    extended_min = max(24, int(round(frame_w * 0.030)))
+    for size in range(size_min, extended_min - 1, -1):
+        measurer = _Measurer(_load_font(size))
         asc, desc = measurer.metrics()
         line_h = int(round((asc + desc) * _LINE_LEADING))
         lines, widths = _wrap_rtl(measurer, words, max_block_w)
-        chosen = (size_min, measurer, lines, widths, line_h)
-    return chosen
+        if len(lines) * line_h <= extended_max_h:
+            return (size, measurer, lines, widths, line_h, True)
+
+    # Last-resort fit for unusually large text strings while keeping the
+    # complete ayah inside the frame and preserving its exact source text.
+    size = extended_min
+    measurer = _Measurer(_load_font(size))
+    asc, desc = measurer.metrics()
+    line_h = int(round((asc + desc) * _LINE_LEADING))
+    lines, widths = _wrap_rtl(measurer, words, max_block_w)
+    return (size, measurer, lines, widths, line_h, True)
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +282,8 @@ def render_ayah_text_png(text: str, out_path: str, template: str = "normal",
                          duration_sec: float | None = None,
                          with_highlight: bool = False,
                          highlight_path: str | None = None,
-                         position: str = "lower") -> dict:
+                         position: str = "lower",
+                         text_color: str | None = None) -> dict:
     """Render ``text`` (verbatim!) to a transparent full-frame PNG.
 
     ``position`` anchors the text block vertically: ``"lower"`` (default,
@@ -274,7 +296,7 @@ def render_ayah_text_png(text: str, out_path: str, template: str = "normal",
          "words": [{"i": 0, "x": .., "y": .., "w": .., "h": ..}, ...],
          "windows": [(t0, t1), ...] | None}
     """
-    profile = resolve_profile(template)
+    profile = resolve_profile(template, text_color)
     accent = _hex_to_rgb(profile["accent"])
     backing_rgb = BACKING_COLOR_RGB
     opacity = float(profile.get("backing_opacity", BACKING_OPACITY))
@@ -283,7 +305,7 @@ def render_ayah_text_png(text: str, out_path: str, template: str = "normal",
     scale = frame_w / 1080
     padding = max(10, int(BACKING_PADDING_PX * scale))
 
-    size, measurer, lines, widths, line_h = _fit_layout(
+    size, measurer, lines, widths, line_h, extended_layout = _fit_layout(
         text, frame_w, frame_h, padding)
     font = measurer.font
     asc, desc = measurer.metrics()
@@ -294,6 +316,8 @@ def render_ayah_text_png(text: str, out_path: str, template: str = "normal",
     pos = (position or "lower").strip().lower()
     if pos not in ("lower", "middle"):
         pos = "lower"
+    if extended_layout:
+        pos = "middle"
     if pos == "middle":
         top = (frame_h - block_h) / 2.0
     else:
@@ -312,10 +336,6 @@ def render_ayah_text_png(text: str, out_path: str, template: str = "normal",
     draw.rounded_rectangle([bx0, by0, bx1, by1], radius=radius,
                            fill=backing_rgb + (int(opacity * 255),))
 
-    # Soft shadow layer under glyphs (extra separation from busy video).
-    shadow = Image.new("RGBA", (frame_w, frame_h), (0, 0, 0, 0))
-    sdraw = ImageDraw.Draw(shadow)
-
     boxes: list[dict] = []
     y_line = top
     for line, line_w in zip(lines, widths):
@@ -324,9 +344,6 @@ def render_ayah_text_png(text: str, out_path: str, template: str = "normal",
         x_right = line_left + line_w  # RTL: start at the right edge
         for order, (word, w_w) in enumerate(line):
             x_word = x_right - w_w
-            sdraw.text((x_word + 2 * scale, y_glyph + 3 * scale), word,
-                       font=font, fill=(0, 0, 0, 140),
-                       direction="rtl", language="ar")
             draw.text((x_word, y_glyph), word, font=font,
                       fill=accent + (255,), direction="rtl", language="ar")
             boxes.append({"i": len(boxes), "x": int(x_word),
@@ -335,15 +352,17 @@ def render_ayah_text_png(text: str, out_path: str, template: str = "normal",
             x_right -= (w_w + measurer.space_width)
         y_line += line_h
 
-    shadow = shadow.filter(ImageFilter.GaussianBlur(radius=3 * scale))
-    canvas = Image.alpha_composite(shadow, canvas)
     canvas.save(out_path, "PNG")
 
     windows = word_windows(text.split(), duration_sec)
     meta = {"png": out_path, "width": frame_w, "height": frame_h,
+            "font": font.getname()[0], "font_size": size,
+            "extended_layout": extended_layout,
             "words": boxes, "windows": windows}
-    logging.debug("text_overlay: rendered '%s…' (%d words, font %dpx) → %s",
-                  text[:16], len(boxes), size, out_path)
+    logging.info(
+        "text_overlay: rendered '%s…' (%d words, %s %dpx, color %s) → %s",
+        text[:16], len(boxes), font.getname()[0], size, profile["accent"], out_path,
+    )
     if with_highlight:
         hb = max(b["h"] for b in boxes) if boxes else line_h
         wb = max(b["w"] for b in boxes) if boxes else int(6 * scale)

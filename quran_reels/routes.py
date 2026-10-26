@@ -9,6 +9,7 @@ def _validated_api_payload():
     from flask import jsonify, request
     from main import (
         BACKGROUND_MOTIONS, OUTPUT_FORMATS, QUALITY_PRESETS, RECITERS_MAP,
+        TEXT_COLOR_DEFAULT, TEXT_COLOR_OPTIONS,
         VERSE_COUNTS, get_available_templates,
     )
     data = request.get_json(silent=True)
@@ -46,6 +47,7 @@ def _validated_api_payload():
     template = data.get('template', 'normal')
     transition_style = data.get('transitionStyle') or None
     background_motion = data.get('backgroundMotion', 'still')
+    text_color = data.get('textColor', TEXT_COLOR_DEFAULT)
     background_interval_unit = data.get('backgroundIntervalUnit', 'seconds')
     try:
         background_interval = int(data.get('backgroundInterval', 15))
@@ -63,6 +65,8 @@ def _validated_api_payload():
         return None, (jsonify({'error': 'أسلوب الانتقال المختار غير صالح'}), 400)
     if background_motion not in BACKGROUND_MOTIONS:
         return None, (jsonify({'error': 'حركة الخلفية المختارة غير صالحة'}), 400)
+    if text_color not in TEXT_COLOR_OPTIONS:
+        return None, (jsonify({'error': 'لون نص الآية المختار غير صالح'}), 400)
     if background_interval_unit not in ('seconds', 'ayahs'):
         return None, (jsonify({'error': 'وحدة مدة الخلفية غير صالحة'}), 400)
     maximum = 120 if background_interval_unit == 'seconds' else 12
@@ -82,6 +86,7 @@ def _validated_api_payload():
         'template': template,
         'transitionStyle': transition_style,
         'backgroundMotion': background_motion,
+        'textColor': text_color,
         'backgroundInterval': background_interval,
         'backgroundIntervalUnit': background_interval_unit,
     }, None
@@ -163,7 +168,7 @@ def generate_video():
               include_bismillah, reciter_speed, transition_style_override,
               show_text, highlight_words, text_position,
               payload['backgroundMotion'], payload['backgroundInterval'],
-              payload['backgroundIntervalUnit']),
+              payload['backgroundIntervalUnit'], payload['textColor']),
         daemon=True
     )
     thread.start()
@@ -219,7 +224,7 @@ def preview_video():
         args=(reciter_id, surah, ayah, ayah, 'low', 'reels', template, '', None,
               False, 1.0, None, show_text, highlight_words, text_position,
               payload['backgroundMotion'], payload['backgroundInterval'],
-              payload['backgroundIntervalUnit']),
+              payload['backgroundIntervalUnit'], payload['textColor']),
         daemon=True
     )
     thread.start()

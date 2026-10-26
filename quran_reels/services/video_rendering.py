@@ -484,7 +484,8 @@ def process_single_ayah_ffmpeg(args):
      reciter_speed, is_last, show_text, highlight_words,
      text_position, frame_size, include_bismillah, background_motion,
      prepared_audio, planned_background, background_offset_sec,
-     motion_offset_sec, scene_duration_sec, motion_direction) = args
+     motion_offset_sec, scene_duration_sec, motion_direction,
+     text_color) = args
 
     # Bind the parent build's JobContext to this worker thread so any
     # nested call to ``current_job()`` (e.g. inside ``download_audio``)
@@ -517,7 +518,8 @@ def process_single_ayah_ffmpeg(args):
             render_ayah_text_png(
                 "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
                 bismillah_path, template=template, frame_w=frame_size[0],
-                frame_h=frame_size[1], position=text_position)
+                frame_h=frame_size[1], position=text_position,
+                text_color=text_color)
             timed_text_overlays.append((bismillah_path, 0.0, lead_end))
             add_log("Bismillah: visual lead-in over ayah audio; no added silence")
         if use_highlight:
@@ -541,6 +543,7 @@ def process_single_ayah_ffmpeg(args):
                 with_highlight=use_highlight,
                 highlight_path=current_job().highlight_png(idx),
                 position=text_position,
+                text_color=text_color,
             )
             if bismillah_lead:
                 timed_text_overlays.append((meta["png"], lead_end, duration))

@@ -21,11 +21,13 @@ import os
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _ASSETS_DIR = os.path.join(_REPO_ROOT, "assets")
 
-# Font fallback chain: bundled Quranic-grade font first (deterministic
-# rendering across machines), then system families resolved via fontconfig.
+# Prefer Quranic-grade system fonts when installed, then use the bundled
+# Scheherazade font and common Arabic families as reliable fallbacks.
 TEXT_FONT_CANDIDATES = [
-    ("file", os.path.join(_ASSETS_DIR, "fonts", "ScheherazadeNew-Regular.ttf")),
+    ("family", "Amiri Quran"),
+    ("family", "KFGQPC Uthmanic Script HAFS"),
     ("family", "Amiri"),
+    ("file", os.path.join(_ASSETS_DIR, "fonts", "ScheherazadeNew-Regular.ttf")),
     ("family", "Noto Kufi Arabic"),
     ("family", "DejaVu Sans"),
 ]
@@ -34,15 +36,15 @@ TEXT_FONT_CANDIDATES = [
 TEXT_ZONE_MAX_WIDTH_FRAC = 0.86    # block width cap vs frame width
 TEXT_ZONE_BOTTOM_MARGIN_FRAC = 0.08  # gap between block bottom and frame bottom
 TEXT_ZONE_MAX_HEIGHT_FRAC = 0.34   # block height cap vs frame height
-TEXT_MAX_LINES = 6                 # hard wrap budget inside the zone
+TEXT_MAX_LINES = 6                 # legacy compatibility; measured wrapping is adaptive
 
 # Glyph size bounds (fractions of frame width; 1080-wide reference design).
-TEXT_SIZE_MIN_FRAC = 0.042         # ≈45 px @1080 → legibility floor (SC-003)
+TEXT_SIZE_MIN_FRAC = 0.042         # ≈45 px @1080 → mobile legibility floor
 TEXT_SIZE_MAX_FRAC = 0.085         # ≈92 px @1080
 
 # Backing box behind the glyphs (contrast treatment, FR-004/SC-003).
-BACKING_COLOR_RGB = (17, 17, 17)   # near-black rounded box fill
-BACKING_OPACITY = 0.60             # alpha of the backing fill
+BACKING_COLOR_RGB = (0, 0, 0)      # black rounded box fill
+BACKING_OPACITY = 0.70             # alpha of the backing fill
 BACKING_PADDING_PX = 28            # padding around text at 1080-wide design
 TEXT_MIN_CONTRAST = 4.5            # WCAG-ish contrast floor vs backdrop
 
@@ -52,15 +54,16 @@ HIGHLIGHT_WORDS_DEFAULT = True     # estimated word timing, enabled by default
 HIGHLIGHT_COLOR_RGBA = (232, 182, 76, 140)  # Honey Gold from the visual theme
 TEXT_POSITION_DEFAULT = "lower"    # ayah-text block anchor: "lower" | "middle"
 TEXT_POSITIONS = ("lower", "middle")
+TEXT_COLOR_DEFAULT = "#F5F1E6"
+TEXT_COLOR_OPTIONS = (TEXT_COLOR_DEFAULT, "#E6C878", "#FFFFFF")
 
-# Per-template styling profiles (keys match TEMPLATES below).
-# 'accent' drives the glyph color; backing opacity varies slightly so each
-# theme reads distinctly while staying within the contrast guard.
+# Per-template styling profiles (keys match TEMPLATES below). Request-level
+# text color can override the accent; each profile keeps the shared backing.
 TEXT_STYLE_PROFILES = {
-    "ramadan": {"accent": "#FFD98A", "backing_opacity": 0.62},
-    "normal":  {"accent": "#FFFFFF", "backing_opacity": 0.58},
-    "masjid":  {"accent": "#F2FBF4", "backing_opacity": 0.60},
-    "islamic": {"accent": "#FFF7E6", "backing_opacity": 0.60},
+    "ramadan": {"accent": TEXT_COLOR_DEFAULT, "backing_opacity": 0.70},
+    "normal":  {"accent": TEXT_COLOR_DEFAULT, "backing_opacity": 0.70},
+    "masjid":  {"accent": TEXT_COLOR_DEFAULT, "backing_opacity": 0.70},
+    "islamic": {"accent": TEXT_COLOR_DEFAULT, "backing_opacity": 0.70},
 }
 
 

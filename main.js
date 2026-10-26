@@ -497,6 +497,7 @@ generateBtn.addEventListener('click', async (e) => {
         showText: document.getElementById('showTextCheckbox').checked,
         highlightWords: document.getElementById('highlightWordsCheckbox').checked,
         textPosition: document.getElementById('textPositionSelect').value,
+        textColor: document.getElementById('textColorSelect').value,
         targetDurationSeconds: (() => {
             const v = document.getElementById('targetDurationInput').value;
             const n = parseInt(v, 10);
@@ -566,6 +567,7 @@ previewBtn.addEventListener('click', async () => {
         showText: document.getElementById('showTextCheckbox').checked,
         highlightWords: document.getElementById('highlightWordsCheckbox').checked,
         textPosition: document.getElementById('textPositionSelect').value,
+        textColor: document.getElementById('textColorSelect').value,
         backgroundMotion: document.querySelector('input[name="backgroundMotion"]:checked')?.value || 'still',
         backgroundInterval: parseInt(document.getElementById('backgroundInterval').value, 10) || 15,
         backgroundIntervalUnit: document.getElementById('backgroundIntervalUnit').value

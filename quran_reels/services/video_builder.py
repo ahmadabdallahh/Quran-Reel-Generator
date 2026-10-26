@@ -333,7 +333,8 @@ def _build_ayah_args(job, reciter_id, surah, start_ayah, last_ayah, template,
                      bg_style, quality, reciter_speed, show_text,
                      highlight_words, text_position, frame_size,
                      include_bismillah, background_motion='still',
-                     background_interval=15, background_interval_unit='seconds'):
+                     background_interval=15, background_interval_unit='seconds',
+                     text_color=None):
     """Create the stable, job-scoped worker arguments for each ayah."""
     if text_position not in TEXT_POSITIONS:
         text_position = TEXT_POSITION_DEFAULT
@@ -384,7 +385,8 @@ def _build_ayah_args(job, reciter_id, surah, start_ayah, last_ayah, template,
          text_position, frame_size, include_bismillah, background_motion,
          audio_assets[index - 1][0], scene_for_ayah[index - 1][0],
          scene_for_ayah[index - 1][1], scene_for_ayah[index - 1][1],
-         scene_for_ayah[index - 1][2], scene_for_ayah[index - 1][3])
+         scene_for_ayah[index - 1][2], scene_for_ayah[index - 1][3],
+         text_color)
         for index, ayah in enumerate(range(start_ayah, last_ayah + 1), start=1)
     ]
 
@@ -426,7 +428,7 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
                 highlight_words=HIGHLIGHT_WORDS_DEFAULT,
                 text_position=TEXT_POSITION_DEFAULT,
                 background_motion='still', background_interval=15,
-                background_interval_unit='seconds'):
+                background_interval_unit='seconds', text_color=None):
     """Main video builder.
 
     Downloads each ayah's recitation, muxes it onto a background video
@@ -454,6 +456,8 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
                                  override the template's default.
       background_motion: Optional camera movement applied only to the
                          background clip of each ayah.
+      text_color:        Optional supported Quran-text color; defaults to
+                         warm ivory when omitted.
 
     Returns:
         str | None: Absolute ``output_path`` of the final mp4 on success,
@@ -492,6 +496,7 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
             quality, reciter_speed, show_text, highlight_words, text_position,
             frame_size, include_bismillah, background_motion,
             background_interval, background_interval_unit,
+            text_color,
         )
         temp_output_path, output_path = _build_output_paths(
             surah, start_ayah, last_ayah, quality, template, person_name,

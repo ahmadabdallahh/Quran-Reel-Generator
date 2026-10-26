@@ -288,6 +288,14 @@
                             <option value="middle">وسط الفيديو</option>
                         </select>
                     </div>
+                    <div>
+                        <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80" for="textColorSelect">لون نص الآية</label>
+                        <select id="textColorSelect" class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition">
+                            <option value="#F5F1E6" selected>عاجي دافئ — افتراضي</option>
+                            <option value="#E6C878">ذهبي ناعم</option>
+                            <option value="#FFFFFF">أبيض</option>
+                        </select>
+                    </div>
                     <div class="col-span-full divide-y divide-gold/15 overflow-hidden rounded-2xl border-2 border-gold/20 bg-white/60">
                     <label class="flex items-start gap-3 px-4 py-4 cursor-pointer select-none transition hover:bg-tint"
                         for="bismillahCheckbox">
@@ -393,7 +401,7 @@
     </main>
 
     <footer class="relative z-10 pb-7 text-center text-xs text-ink/60">
-        <span>الإصدار <span id="appVersion">0.7.0</span></span>
+        <span>الإصدار <span id="appVersion">0.7.1</span></span>
     </footer>
 
     <script src="main.js"></script>
