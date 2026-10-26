@@ -88,6 +88,12 @@ const renderEta = document.getElementById('renderEta');
 const retryBtn = document.getElementById('retryBtn');
 const cancelBtn = document.getElementById('cancelBtn');
 
+const missedBanner = document.getElementById('missedBanner');
+const missedBannerTitle = document.getElementById('missedBannerTitle');
+const missedBannerBody = document.getElementById('missedBannerBody');
+const missedBannerLink = document.getElementById('missedBannerLink');
+const missedBannerDismiss = document.getElementById('missedBannerDismiss');
+
 const videoPreviewWrapper = document.getElementById('videoPreviewWrapper');
 const previewVideo = document.getElementById('previewVideo');
 
@@ -344,6 +350,8 @@ async function pollProgress() {
         const res = await fetch(`${API_BASE}/api/progress`);
         const data = await res.json();
 
+        handleRenderEvents(data.notifications);
+
         if (data.is_running || data.is_complete || data.is_cancelled || data.error) {
             statusCard.classList.add('active');
             updateUI(data);
@@ -367,6 +375,135 @@ async function pollProgress() {
     }
 }
 
+// --- Render notifications ---
+// The server records every finished render (see
+// quran_reels/services/notifications.py) and ships the last 20 events with
+// /api/progress.  One feed drives both the browser toast and the "finished
+// while you were away" banner, so neither path can double-fire.
+
+const NOTIFIED_EVENT_KEY = 'quranReels.lastNotifiedEventId';
+const RECENT_EVENT_WINDOW_MS = 20 * 1000;          // fresh enough to toast
+const MISSED_EVENT_MAX_AGE_MS = 12 * 60 * 60 * 1000; // older than this: ignore
+
+let lastNotifiedEventId = 0;
+try {
+    lastNotifiedEventId = Number(localStorage.getItem(NOTIFIED_EVENT_KEY) || 0) || 0;
+} catch (e) {
+    // Storage blocked: de-dupe degrades to per-page-load.
+}
+let titleFlashTimer = null;
+let titleFlashOriginal = '';
+
+function requestNotificationPermission() {
+    if (!('Notification' in window)) return;
+    if (Notification.permission !== 'default') return;
+    try {
+        const request = Notification.requestPermission();
+        // Older Safari returns undefined instead of a promise.
+        if (request && typeof request.catch === 'function') request.catch(() => {});
+    } catch (e) {
+        // Permission prompts are best-effort; the banner still covers us.
+    }
+}
+
+function handleRenderEvents(events) {
+    if (!Array.isArray(events) || events.length === 0) return;
+
+    const fresh = events.filter((event) => Number(event.id) > lastNotifiedEventId);
+    if (fresh.length === 0) return;
+
+    lastNotifiedEventId = fresh.reduce(
+        (max, event) => Math.max(max, Number(event.id) || 0), lastNotifiedEventId);
+    try {
+        localStorage.setItem(NOTIFIED_EVENT_KEY, String(lastNotifiedEventId));
+    } catch (e) {
+        // Private mode / storage disabled: de-dupe degrades to per-page-load.
+    }
+
+    const now = Date.now();
+    fresh.forEach((event) => {
+        const age = now - Number(event.ts) * 1000;
+        if (age <= RECENT_EVENT_WINDOW_MS) {
+            showBrowserNotification(event);
+        } else if (age <= MISSED_EVENT_MAX_AGE_MS) {
+            showMissedBanner(event);
+        }
+    });
+}
+
+function showBrowserNotification(event) {
+    const hidden = document.visibilityState !== 'visible' || !document.hasFocus();
+    if (!hidden) return; // the user is already looking at the result
+
+    const fallbackTitle = event.ok ? 'الفيديو جاهز' : 'فشل إنشاء الفيديو';
+    if (!('Notification' in window) || Notification.permission !== 'granted') {
+        flashTitle(fallbackTitle);
+        return;
+    }
+    try {
+        const notification = new Notification(event.title, {
+            body: event.body,
+            tag: `quran-reel-${event.id}`,
+            lang: 'ar',
+            dir: 'rtl',
+        });
+        notification.onclick = () => {
+            window.focus();
+            notification.close();
+        };
+    } catch (e) {
+        // Some platforms only allow notifications from a service worker.
+        flashTitle(fallbackTitle);
+    }
+}
+
+function flashTitle(text) {
+    if (titleFlashTimer) return;
+    titleFlashOriginal = document.title;
+
+    const stop = () => {
+        if (!titleFlashTimer) return;
+        clearInterval(titleFlashTimer);
+        titleFlashTimer = null;
+        document.title = titleFlashOriginal;
+        window.removeEventListener('focus', stop);
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+    const onVisibilityChange = () => {
+        if (document.visibilityState === 'visible') stop();
+    };
+
+    let showBadge = true;
+    titleFlashTimer = setInterval(() => {
+        document.title = showBadge ? `✅ ${text}` : titleFlashOriginal;
+        showBadge = !showBadge;
+    }, 1500);
+    window.addEventListener('focus', stop);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+}
+
+function showMissedBanner(event) {
+    if (!missedBanner) return;
+
+    missedBanner.classList.toggle('is-error', !event.ok);
+    missedBannerTitle.textContent = event.title;
+    missedBannerBody.textContent = event.body;
+
+    const filename = event.filename
+        || String(event.output_path || '').split(/[\\/]/).pop();
+    if (event.ok && filename) {
+        missedBannerLink.href = `${API_BASE}/outputs/video/${encodeURIComponent(filename)}`;
+        missedBannerLink.hidden = false;
+    } else {
+        missedBannerLink.hidden = true;
+    }
+    missedBanner.hidden = false;
+}
+
+function hideMissedBanner() {
+    if (missedBanner) missedBanner.hidden = true;
+}
+
 function appendLog(msg) {
     const line = document.createElement('div');
     line.className = 'log-line';
@@ -384,6 +521,7 @@ function setPlayerState(state) {
 
 function resetPlayer() {
     displayedLogs = 0;
+    hideMissedBanner();
     logTerminal.innerHTML = '<div class="log-line">&gt; <span>بانتظار بدء المهمة...</span></div>';
     statusCard.classList.remove('done');
     statusText.textContent = 'جاري التحضير...';
@@ -463,6 +601,13 @@ function updateUI(data) {
     }
 }
 
+if (missedBannerDismiss) {
+    missedBannerDismiss.addEventListener('click', hideMissedBanner);
+}
+if (missedBannerLink) {
+    missedBannerLink.addEventListener('click', hideMissedBanner);
+}
+
 cancelBtn.addEventListener('click', async () => {
     cancelBtn.disabled = true;
     cancelBtn.querySelector('.cancel-label').textContent = 'جارٍ الإلغاء...';
@@ -523,6 +668,11 @@ generateBtn.addEventListener('click', async (e) => {
         resetPlayer();
         generateBtn.disabled = true;
         generateBtn.innerHTML = WORKING_LABEL;
+
+        // Ask once, on a real user gesture (and only for a valid form), so
+        // the browser may toast this render when it finishes in the
+        // background.
+        requestNotificationPermission();
 
         const res = await fetch(`${API_BASE}/api/generate`, {
             method: 'POST',

@@ -349,6 +349,22 @@
             </form>
         </section>
 
+        <div id="missedBanner" class="missed-banner" role="status" aria-live="polite" hidden>
+            <svg class="missed-banner-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8" />
+                <path d="M10.3 21a2 2 0 0 0 3.4 0" />
+            </svg>
+            <div class="missed-banner-text">
+                <p class="missed-banner-title" id="missedBannerTitle">انتهى إنشاء فيديو أثناء غيابك</p>
+                <p class="missed-banner-body" id="missedBannerBody"></p>
+            </div>
+            <a id="missedBannerLink" class="missed-banner-link" href="#" hidden>عرض النتيجة</a>
+            <button type="button" id="missedBannerDismiss" class="missed-banner-dismiss" aria-label="إغلاق التنبيه">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17" /></svg>
+            </button>
+        </div>
+
         <section id="statusCard"
             class="status-card relative rounded-[32px] border border-gold/30 bg-card/95 p-6 md:p-8 shadow-[0_20px_50px_rgba(74,60,25,0.16)]">
             <div class="flex items-center justify-between gap-4 mb-5">

@@ -179,7 +179,13 @@ def generate_video():
 def get_progress():
     from flask import jsonify
     from main import current_progress
-    return jsonify(current_progress.to_dict())
+    from quran_reels.services.notifications import recent_events
+    payload = current_progress.to_dict()
+    # Event feed for the UI: powers the "finished while you were away"
+    # banner and de-duplicates browser notifications.  Kept out of
+    # ProgressState so reset_progress() cannot wipe the history.
+    payload['notifications'] = recent_events()
+    return jsonify(payload)
 
 
 def cancel_operation():
@@ -224,7 +230,8 @@ def preview_video():
         args=(reciter_id, surah, ayah, ayah, 'low', 'reels', template, '', None,
               False, 1.0, None, show_text, highlight_words, text_position,
               payload['backgroundMotion'], payload['backgroundInterval'],
-              payload['backgroundIntervalUnit'], payload['textColor']),
+              payload['backgroundIntervalUnit'], payload['textColor'],
+              False),  # notify=False: previews are throwaway
         daemon=True
     )
     thread.start()

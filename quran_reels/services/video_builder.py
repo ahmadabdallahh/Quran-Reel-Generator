@@ -36,6 +36,7 @@ from quran_reels.utils.progress import (
     OperationCancelled, run_cancellable, raise_if_cancelled,
 )
 from quran_reels.services.themes import get_available_templates
+from quran_reels.services.notifications import notify_render_finished
 
 
 
@@ -428,7 +429,8 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
                 highlight_words=HIGHLIGHT_WORDS_DEFAULT,
                 text_position=TEXT_POSITION_DEFAULT,
                 background_motion='still', background_interval=15,
-                background_interval_unit='seconds', text_color=None):
+                background_interval_unit='seconds', text_color=None,
+                notify=True):
     """Main video builder.
 
     Downloads each ayah's recitation, muxes it onto a background video
@@ -458,6 +460,10 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
                          background clip of each ayah.
       text_color:        Optional supported Quran-text color; defaults to
                          warm ivory when omitted.
+      notify:            Fire the render-finished notification (desktop
+                         toast + event feed).  ``/api/preview`` passes
+                         ``False`` so throwaway single-ayah renders stay
+                         silent.
 
     Returns:
         str | None: Absolute ``output_path`` of the final mp4 on success,
@@ -519,9 +525,30 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
         update_progress(100, 'تم بنجاح!')
         current_progress.set(is_complete=True, output_path=output_path)
 
+        size_bytes = None
+        duration_seconds = None
         if os.path.isfile(output_path):
-            size_mb = os.path.getsize(output_path) / (1024 * 1024)
-            logging.info(f"Output: {output_path} ({size_mb:.2f} MB)")
+            try:
+                size_bytes = os.path.getsize(output_path)
+                logging.info(
+                    f"Output: {output_path} ({size_bytes / (1024 * 1024):.2f} MB)"
+                )
+            except OSError as exc:
+                logging.info(f"Could not stat output {output_path}: {exc}")
+            try:
+                duration_seconds = get_audio_duration_ffprobe(output_path) or None
+            except Exception as exc:  # duration is cosmetic in the toast
+                logging.info(f"Could not probe output duration: {exc}")
+
+        if notify:
+            notify_render_finished(
+                surah=surah,
+                start_ayah=start_ayah,
+                end_ayah=last_ayah,
+                output_path=output_path,
+                size_bytes=size_bytes,
+                duration_seconds=duration_seconds,
+            )
 
         return output_path
 
@@ -538,6 +565,13 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
         current_progress.set(error=str(e))
         add_log(f'[ERROR] {str(e)}')
         update_progress(0, f'خطأ: {str(e)}')
+        if notify:
+            notify_render_finished(
+                surah=surah,
+                start_ayah=start_ayah,
+                end_ayah=end_ayah or start_ayah,
+                error=str(e),
+            )
         return None
     finally:
         current_progress.set(is_running=False)

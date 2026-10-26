@@ -795,6 +795,105 @@ input:-webkit-autofill {
     display: none;
 }
 
+/* ----- Missed render banner (fed by /api/progress notifications) ----- */
+.missed-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 16px 18px;
+    border: 1px solid color-mix(in srgb, var(--color-gold) 40%, transparent);
+    border-radius: 22px;
+    background: color-mix(in srgb, var(--color-card) 94%, var(--color-gold));
+    box-shadow: 0 14px 34px rgba(74, 60, 25, 0.14);
+    animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.missed-banner[hidden] {
+    display: none;
+}
+
+.missed-banner.is-error {
+    border-color: #d89886;
+    background: #fff1ed;
+}
+
+.missed-banner-icon {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    margin-top: 2px;
+    color: var(--accent);
+}
+
+.missed-banner.is-error .missed-banner-icon {
+    color: #8a2f24;
+}
+
+.missed-banner-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.missed-banner-title {
+    margin: 0;
+    font-weight: 700;
+    color: var(--color-ink);
+}
+
+.missed-banner-body {
+    margin: 4px 0 0;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: color-mix(in srgb, var(--color-ink) 72%, transparent);
+    overflow-wrap: anywhere;
+}
+
+.missed-banner-link {
+    flex-shrink: 0;
+    align-self: center;
+    padding: 8px 14px;
+    border-radius: 12px;
+    background: var(--accent);
+    color: var(--color-foam);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.missed-banner-link:hover {
+    background: var(--accent-ink);
+}
+
+.missed-banner-link[hidden] {
+    display: none;
+}
+
+.missed-banner-dismiss {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    color: color-mix(in srgb, var(--color-ink) 55%, transparent);
+    cursor: pointer;
+}
+
+.missed-banner-dismiss svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+}
+
+.missed-banner-dismiss:hover,
+.missed-banner-dismiss:focus-visible {
+    color: var(--color-ink);
+    background: var(--color-tint);
+    outline: none;
+}
+
 .render-eta {
     min-height: 1.5rem;
     margin: 10px 0;
