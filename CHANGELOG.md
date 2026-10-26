@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2 — 2026-10-26
+
+### Maintenance
+
+- Documented the proposed hand-picked background sequence workflow.
+- Consolidated project planning documents and added a local run helper.
+
 ## 0.1.1 — 2026-10-25
 
 ### Maintenance

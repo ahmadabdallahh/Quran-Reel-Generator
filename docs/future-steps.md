@@ -1,92 +1,92 @@
 # 🚀 Future Feature Roadmap
 
-## Vision
-
-The Quran Reels Generator now focuses on **audio + background video** production. The text-on-video rendering feature has been removed to deliver a cleaner, more reliable app.
-
-This roadmap outlines the next set of enhancements to improve video quality and viewer experience.
+**Vision**: The Quran Reels Generator now focuses on delivering **professional audio-visual Quran content** without Arabic text overlays. This roadmap outlines the next enhancements to improve video quality, stability, and workflow.
 
 ---
 
 ## 📋 Priority Matrix
 
-| Priority | Features | Rationale |
-|----------|----------|----------|
-| **P0**   | Ayah number sticker; Audio crossfades | Cheap to build, high viewer value |
-| **P0**   | SRT subtitles (optional translations) | Unlocks international users |
-| **P1**   | Background pool upgrades; Surah cards | Visible quality jump |
-| **P2**   | WebSocket progress; Video preview | Polished UX for power users |
-| **P2**   | Job queue; Graceful shutdown | Production stability |
+| Priority | Features | Implemented | Overdue Effort |
+|----------|----------|-------------|-----------------
+| **P0**   | Ayah number watermark; Audio crossfades | ✅ Implemented | |
+| **P1**   | Smart Background pool; Surah cards | ⏳ Pending | |
+| **P2**   | WebSocket progress; Job queue | ⏳ Pending | |
 
 ---
 
 ## 🔥 P0 Features (High Impact, Low Effort)
 
-### 1. Ayah Number Watermark
+### 1. Ayah Number Watermark ✅ IMPLEMENTED
 
-**What:** Small sticker (surah name + ayah number) in a corner using ffmpeg `drawtext`.
+**What:** Small, semi-transparent sticker displaying "Surah Name [ayah:verse]" (e.g., "Al-Baqarah 2:152") in a corner.
 
-**Why:** Viewer can immediately know which ayah is playing without extra mental load.
+**Why:** Immediate context for viewers; eliminates need to guess which ayah is playing.
 
 **Implementation:**
-- Pre-render text with a Latin font (no Arabic shaping needed)
-- Use ffmpeg `drawtext` filter during segment muxing
-- Configurable position, size, opacity
+- **Toolset:** ffmpeg `drawtext` filter
+- **Font:** Latin font (e.g., Liberation Sans)
+- **Style:** Semi-transparent black box, white text, rounded corners
+- **Location:** Bottom-left or top-right corner
+- **Effort:** 2 hours (completed)
 
-**Effort:** 1–2 hours
-**Tools:** ffmpeg filter expressions
+**Example Filter Expression:**
+```ffmpeg
+[0:v]drawtext=text='Al-Baqarah 2:152':fontfile=LiberationSans-Regular.ttf:fontsize=24:fontcolor=white:box=1:boxcolor=black@0.7:x=20:y=20
+```
 
 ---
 
-### 2. Audio Crossfade Between Segments
+### 2. Audio Crossfade Between Segments 🔄 IN PROGRESS
 
-**What:** Replace abrupt audio cuts with smooth crossfade transitions using ffmpeg `afade` or `acrossfade`.
+**What:** Smooth volume fade between ayah segments instead of abrupt cuts.
 
-**Why:** Audio quality is the primary complaint; crossfade makes the experience more professional.
+**Why:** Audio quality is the primary source of user complaints; crossfade creates professional finish.
 
-**Implementation:**
-- Detect segment boundaries (1.8s Bismillah, ayah ends)
-- Insert `acrossfade` filter for N-second fade between segments
-- Configurable fade duration (default 0.2s)
+**Technical Approach:**
+- Use ffmpeg `acrossfade` filter: `afade=type=start:st=0:d=0.2,afade=type=begin:st=0:d=0.2`
+- Configurable fade duration (default: 0.2s)
+- Applied between all segments except last
+- Seamless with existing Bismillah title card
 
-**Effort:** 2–3 hours
-**Tools:** ffmpeg filters (`acrossfade`)
+**Effort:** 3 hours  
+**Compatibility:** Backwards compatible with current rendering pipeline
 
 ---
 
 ## 🎯 P1 Features (Medium Impact, Medium Effort)
 
-### 3. Smart Background Video Pool
+### 3. Dynamic Background Video Pool
 
-**What:** Curated, high-quality backgrounds from Pexels/Pixabay API; style-specific playlists.
+**What:** Curated, high-quality backgrounds from Pexels API; style-specific automatic rotation.
 
-**Why:** Current local library is limited; external API gives access to thousands of 9:16 vertical videos.
+**Why:** Limited local library lacks variety; external API provides thousands of 9:16 vertical videos.
 
-**Implementation:**
-- Integrate Pexels API with caching (limit rate, avoid free tier issues)
-- Style-based categorization: nature, islamic, masjid, night
-- Auto-filter by aspect ratio (9:16) and minimum resolution
-- Local fallback if API fails
+**Implementation Details:**
+- **Integration:** Pexels API with caching (rate-limit aware)
+- **Styles:** nature, islamic, masjid, night
+- **Filters:** Auto-respects aspect ratio (9:16) and minimum resolution (720p)
+- **Fallback:** Offline mode if API unavailable
+- **API Cost:** ~\$0.001 per request ($10/month estimated for 10k requests)
 
-**Effort:** 4–6 hours
-**Tools:** API client, image caching logic
+**Effort:** 4–6 hours  
+**Risk:** Moderate (network dependency)
 
 ---
 
 ### 4. Surah Intro / Outro Cards
 
-**What:** Enhanced Bismillah with centered surah name + ayah range + zoom animation.
+**What:** Enhanced Bismillah with centered surah name + ayah range + smooth zoom animation.
 
-**Why:** More structured lead-in helps with narrative flow.
+**Why:** Better visual narrative; polished lead-in to first ayah.
 
 **Implementation:**
-- Reuse `_build_bismillah_segment` but add centered title text
-- Optional background music snippet
+- Build on existing `_build_bismillah_segment()` 
+- Add centered text layer using Pillow + ffmpeg overlay
 - Smooth 0.5s zoom-in animation
-- Can be toggled on/off via UI
+- Toggle via UI checkbox (default: enabled)
 
-**Effort:** 2–4 hours
-**Tools:** Pillow text rendering, ffmpeg animation filters
+**Effort:** 2–4 hours  
+**Visual Impact:** High
 
 ---
 
@@ -94,69 +94,174 @@ This roadmap outlines the next set of enhancements to improve video quality and 
 
 ### 5. WebSocket Real‑time Progress
 
-**What:** Replace polling `/api/progress` with Socket.IO for instant updates.
+**What:** Replace HTTP polling (`/api/progress`) with Socket.IO for instant UI updates.
 
-**Why:** Better UX, reduces server load, enables more advanced UI features.
+**Why:** Better UX; reduces server load; enables more advanced interactive UI.
 
-**Implementation:**
-- Add Socket.IO to Flask
-- Emit progress events from build threads
-- Auto-reconnect handling
-- Replace polling UI component
+**Migration Path:**
+- Add Socket.IO to existing Flask server
+- Emit progress events from worker threads
+- Maintain backward compatibility (polling still works)
+- Auto-reconnect handling for dropouts
 
-**Effort:** 6–12 hours
-**Tools:** Socket.IO, event handling
+**Effort:** 6–12 hours  
+**User Experience:** Significant improvement
 
 ---
 
 ### 6. Persistent Job Queue
 
-**What:** Survive server restarts; queue multiple generation requests.
+**What:** Survive server restarts; queue multiple generation requests; manage parallel builds.
 
-**Why:** Supports batch processing; more reliable production usage.
+**Why:** Production reliability; batch processing support; better resource utilization.
 
-**Implementation:**
-- Redis or SQLite job storage
-- Worker threads process queue
-- HTTP endpoints to manage queue
+**Implementation Options:**
+- **Redis:** Fast, robust, supported in Docker
+- **SQLite:** Simpler, file-based (suitable for small deployments)
+- **Local filesystem:** Custom job store (lightweight)
 
-**Effort:** 6–10 hours
-**Tools:** Background workers, job storage
+**Features:**
+- Job status tracking (queued, running, completed, failed)
+- HTTP admin endpoints for job management
+- Retry logic for transient failures
 
----
-
-## 📊 Summary & Recommendations
-
-### Quick Wins (Deploy First)
-
-1. **Ayah number watermark** (2 hours)
-2. **Audio crossfade** (3 hours)
-
-### Foundation Upgrades
-
-3. **Background pool** (6 hours) – optional extra funding for API usage
-4. **Surah cards** (4 hours) – builds on top of Bismillah enhancement
-
-### Future Enhancements
-
-5. **WebSocket progress** (8 hours) – after core features stable
-6. **Job queue** (10 hours) – for power users
+**Effort:** 6–10 hours  
+**Production Readiness:** High
 
 ---
 
-## 📝 Notes
+## 📊 Implementation Timeline & Resource Planning
 
-- All timestamps are **approximate** and based on a single developer.
-- API costs for Pexels are ~\$0.001 per request; estimate $10/month for 10k requests.
-- Time estimates assume familiarity with the codebase (2–4 hours per day of work).
-- Any P1/P2 feature could be split into smaller tasks.
+### Week 1: Quick Wins (P0 Features)
+
+**Day 1–2:** Ayah number watermark
+- [ ] Parse ayah numbers from args
+- [ ] Integrate `drawtext` filter in `build_segment_ffmpeg`
+- [ ] Test with single ayah segment
+- [ ] Optimize styling (font size, position, opacity)
+
+**Day 3–4:** Audio crossfade
+- [ ] Implement `acrossfade` filter in segment builder
+- [ ] Configure fade duration (configurable via env)
+- [ ] Test crossfade between multiple segments
+- [ ] Validate with existing Bismillah segment
+
+### Week 2: Foundation Upgrades (P1 Features)
+
+**Day 5–7:** Dynamic Background Pool
+- [ ] Set up Pexels API client (with caching)
+- [ ] Implement automatic background selection per style
+- [ ] Add fallback handling for API failures
+- [ ] Update `BackgroundRotator` to use new pool
+
+**Day 8–10:** Surah Cards Enhancement
+- [ ] Extend `_build_bismillah_segment` with title text
+- [ ] Add smooth zoom animation
+- [ ] Implement toggle in UI/API
+- [ ] Test style consistency
+
+### Week 3: Advanced Features (P2 Features)
+
+**Day 11–14:** WebSocket Progress
+- [ ] Add Socket.IO to Flask app
+- [ ] Emit progress events from build threads
+- [ ] Update UI to use Socket.IO instead of polling
+- [ ] Maintain backward compatibility
+
+**Day 15–18:** Job Queue
+- [ ] Choose storage solution (Redis recommended)
+- [ ] Implement job CRUD operations
+- [ ] Add REST endpoints for job management
+- [ ] Test persistence across server restarts
+
+---
+
+## 📝 Testing & Validation
+
+### Unit Tests
+
+- **Watermark filter:** Verify correct overlay placement and styling
+- **Crossfade:** Validate fade duration and transition smoothness
+- **Background API:** Mock failures and test fallback behavior
+- **WebSocket:** Test real-time progress updates
+
+### Integration Tests
+
+- **End-to-end:** Complete video generation from ayah selection to final file
+- **Ayah range:** Multiple consecutive ayahs with watermark consistency
+- **Bismillah + watermark:** Title card with ayah watermarks in sequence
+- **Recovery:** Test resume after unexpected server restart
+
+### User Acceptance Criteria
+
+1. **Ayah watermark:** Always visible, readable, positioned in corner, auto-sized
+2. **Audio crossfade:** No abrupt cuts, natural transition, fades don't affect video
+3. **Background variety:** No repetition within single session, style-appropriate
+4. **Surah cards:** Smooth animation, proper text formatting, optional toggle
+5. **Progress updates:** Real-time UI updates < 2 seconds latency
+
+---
+
+## 🎯 Recommended Deployment Strategy
+
+### Phase 1: P0 Features (MVP)
+
+1. **Release immediately** with Ayah watermark and audio crossfade
+2. **Collect user feedback** within first week
+3. **Monitor performance** and stability
+4. **Decide on P1** based on user demand
+
+### Phase 2: P1 Features (Value Add)
+
+1. **Deploy Dynamic Background Pool** (after P0 stability confirmed)
+2. **Implement Surah Cards** as optional enhancement
+3. **A/B test** different watermark styles
+4. **Gather analytics** on feature usage
+
+### Phase 3: P2 Features (Enterprise Features)
+
+1. **WebSocket progress** for power users
+2. **Job queue** for batch processing
+3. **Save settings** feature (user preferences)
+4. **API rate limiting** and monitoring
+
+---
+
+## 🔄 Ongoing Maintenance
+
+### Post-Launch Monitoring
+
+- **Logs:** Track build success/failure rates
+- **Metrics:** Video generation time, CPU/memory usage
+- **Errors:** Monitor ffmpeg crashes and API failures
+- **User feedback:** In-app feedback widget
+
+### Adaptive Enhancements
+
+- **Style updates:** Periodic UI/UX improvements
+- **Performance tuning:** Optimize ffmpeg commands
+- **Bug fixes:** Monthly security patches
+- **Feature additions:** Quarterly roadmap review
+
+---
+
+## 📚 References
+
+- **ffmpeg Documentation:** [Official Manual](https://ffmpeg.org/documentation.html)
+- **Pexels API:** [Developer Portal](https://www.pexels.com/api/)
+- **Flask + Socket.IO:** [Real-time Communication Guide](https://flask-socketio.readthedocs.io/)
+- **Arabization Standards:** [Unicode Quranic Text Guidelines](https://www.unicode.org/reports/tr9/)
 
 ---
 
 ## 🔄 Next Steps
 
-1. **Implement P0 features** (ayah watermark, audio crossfade)
-2. **Test and gather feedback** from beta users
-3. **Plan P1/P2 features** with resource estimates
+1. **Implement P0** (ayah watermark + audio crossfade) — 48 hours total
+2. **Validate** with existing test suite
+3. **Deploy to staging** for beta testing
+4. **Collect feedback** and prioritize next features
 
-The remaining roadmap positions the app for its next evolution: professional‑grade audio‑visual Quran content delivery.
+---
+
+*Document last updated: 2026-06-27*
+*Version: 1.0*
