@@ -225,6 +225,10 @@ def get_config():
             'key': key,
             'label': TEMPLATE_LABELS.get(key, key.replace('_', ' ').title()),
             'previewUrl': url_for('serve_vision', filename=f'{style}/{files[0]}'),
+            'previewUrls': [
+                url_for('serve_vision', filename=f'{style}/{name}')
+                for name in files
+            ],
             'videoCount': len(files),
         })
     return jsonify({

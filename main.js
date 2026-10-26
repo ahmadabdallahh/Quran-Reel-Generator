@@ -254,12 +254,37 @@ function renderThemeOptions(themes) {
 
         const video = document.createElement('video');
         video.className = 'theme-preview';
-        video.src = theme.previewUrl;
         video.muted = true;
-        video.loop = true;
+        video.loop = !(theme.previewUrls?.length > 1);
         video.playsInline = true;
         video.preload = 'metadata';
         video.setAttribute('aria-hidden', 'true');
+
+        const previewUrls = Array.isArray(theme.previewUrls) && theme.previewUrls.length
+            ? theme.previewUrls
+            : [theme.previewUrl].filter(Boolean);
+        if (previewUrls.length) video.src = previewUrls[0];
+        let previewIndex = 0;
+        let previewTimer = null;
+        let previewActive = false;
+
+        const playThemePreview = async () => {
+            if (!previewActive || !previewUrls.length) return;
+            video.src = previewUrls[previewIndex];
+            video.classList.remove('theme-preview-change');
+            requestAnimationFrame(() => video.classList.add('theme-preview-change'));
+            try {
+                await video.play();
+            } catch (_) {
+                return;
+            }
+            if (previewUrls.length > 1 && previewActive) {
+                previewTimer = window.setTimeout(() => {
+                    previewIndex = (previewIndex + 1) % previewUrls.length;
+                    playThemePreview();
+                }, 2800);
+            }
+        };
 
         const title = document.createElement('span');
         title.textContent = theme.label;
@@ -269,10 +294,16 @@ function renderThemeOptions(themes) {
         count.textContent = `${numberFormat.format(theme.videoCount)} مقطع`;
 
         const previewOnIntent = () => {
-            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-            video.play().catch(() => {});
+            if (previewActive || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+            previewActive = true;
+            playThemePreview();
         };
-        const pauseOnExit = () => video.pause();
+        const pauseOnExit = () => {
+            previewActive = false;
+            window.clearTimeout(previewTimer);
+            previewTimer = null;
+            video.pause();
+        };
         label.addEventListener('pointerenter', previewOnIntent);
         label.addEventListener('pointerleave', pauseOnExit);
         label.addEventListener('focusin', previewOnIntent);

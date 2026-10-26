@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0 — 2026-10-26
+
+### Added
+
+- Theme previews now cycle through the actual background clips in each local
+  theme folder, matching the footage pool used across ayahs in generated videos.
+- Added a brief, reduced-motion-aware dissolve when preview clips change.
+
 ## 0.4.0 — 2026-10-26
 
 ### Added
