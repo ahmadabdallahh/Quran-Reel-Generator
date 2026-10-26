@@ -150,7 +150,7 @@ def _xfade_concat_command(segment_results, template_config,
     durations = _probe_segment_durations(segment_results)
     transition_style = template_config.get('transition_style', 'crossfade')
     transition_key = (
-        transition_style if transition_style in ('crossfade', 'fadeblack')
+        transition_style if transition_style in VIDEO_TRANSITIONS
         else template_config.get('transition', 'crossfade')
     )
     transition = VIDEO_TRANSITIONS.get(

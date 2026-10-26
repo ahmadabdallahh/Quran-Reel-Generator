@@ -515,6 +515,129 @@ input:-webkit-autofill {
     background: color-mix(in srgb, var(--color-card) 82%, var(--color-sand));
 }
 
+.animation-choice legend {
+    padding-inline: 0.35rem;
+}
+
+.transition-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+}
+
+.transition-option {
+    position: relative;
+    display: block;
+    cursor: pointer;
+}
+
+.transition-option input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+}
+
+.transition-card {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 74px;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--color-gold) 28%, transparent);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--color-card) 90%, white);
+    transition: border-color 220ms ease, background-color 220ms ease, box-shadow 220ms ease, transform 220ms ease;
+}
+
+.transition-option:hover .transition-card {
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--color-gold) 60%, transparent);
+}
+
+.transition-option input:checked + .transition-card {
+    border-color: color-mix(in srgb, var(--color-gold) 78%, var(--color-ink));
+    background: color-mix(in srgb, var(--color-gold) 12%, var(--color-card));
+    box-shadow: inset -3px 0 0 var(--color-gold), 0 5px 15px color-mix(in srgb, var(--color-gold) 12%, transparent);
+}
+
+.transition-option input:focus-visible + .transition-card {
+    outline: 3px solid color-mix(in srgb, var(--color-gold) 40%, transparent);
+    outline-offset: 2px;
+}
+
+.transition-preview {
+    position: relative;
+    display: block;
+    height: 42px;
+    overflow: hidden;
+    border-radius: 9px;
+    background: #d8c8a0;
+    isolation: isolate;
+}
+
+.transition-preview i {
+    position: absolute;
+    inset: 0;
+    display: block;
+    background: linear-gradient(145deg, #657e67, #334b3c 56%, #9c8759);
+}
+
+.transition-preview i + i {
+    background: linear-gradient(145deg, #bdad80, #78846d 58%, #3b5947);
+}
+
+.preview-crossfade i + i,
+.preview-spaced i + i {
+    animation: sceneDissolve 3.6s ease-in-out infinite alternate;
+}
+
+.preview-spaced i + i {
+    animation-duration: 5.4s;
+}
+
+.preview-fadeblack::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: #171a15;
+    animation: sceneDim 3.6s ease-in-out infinite;
+}
+
+.preview-cut i + i {
+    inset-inline-start: 50%;
+}
+
+.transition-copy {
+    display: grid;
+    gap: 0.1rem;
+    min-width: 0;
+    color: var(--color-ink);
+    line-height: 1.35;
+}
+
+.transition-copy strong {
+    font-size: 0.84rem;
+    font-weight: 700;
+}
+
+.transition-copy small {
+    color: color-mix(in srgb, var(--color-ink) 68%, transparent);
+    font-size: 0.72rem;
+}
+
+@keyframes sceneDissolve {
+    0%, 18% { opacity: 0; }
+    78%, 100% { opacity: 1; }
+}
+
+@keyframes sceneDim {
+    0%, 18%, 82%, 100% { opacity: 0; }
+    48%, 56% { opacity: 0.86; }
+}
+
 .word-highlight-option {
     align-items: center;
     border: 1px solid color-mix(in srgb, var(--color-gold) 48%, transparent);
@@ -651,6 +774,12 @@ input:-webkit-autofill {
     }
 }
 
+@media (max-width: 420px) {
+    .transition-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .template-option {
         animation: none;
@@ -663,6 +792,15 @@ input:-webkit-autofill {
 
     .word-highlight-option {
         transition: none;
+    }
+
+    .transition-option:hover .transition-card {
+        transform: none;
+    }
+
+    .transition-preview i + i,
+    .preview-fadeblack::after {
+        animation: none;
     }
 
     *,

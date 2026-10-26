@@ -154,6 +154,7 @@ BACKGROUND_VIDEO_EXTENSIONS = ('.mp4', '.mov')
 VIDEO_TRANSITIONS = {
     'crossfade': {'type': 'fade', 'duration': 0.45},
     'fadeblack': {'type': 'fadeblack', 'duration': 0.45},
+    'smooth': {'type': 'fade', 'duration': 0.45},
 }
 
 # =============================================================================

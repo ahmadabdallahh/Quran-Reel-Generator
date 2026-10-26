@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 — 2026-10-26
+
+### Added
+
+- Added animated transition previews and four calm scene-transition choices.
+- Added spaced dissolves to reduce visual changes during longer recitations.
+- Honored reduced-motion preferences in the transition previews.
+
 ## 0.3.0 — 2026-10-26
 
 ### Added

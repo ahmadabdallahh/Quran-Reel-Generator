@@ -459,7 +459,7 @@ generateBtn.addEventListener('click', async (e) => {
             return Number.isFinite(n) && n > 0 ? n : null;
         })(),
         reciterSpeed: parseFloat(document.getElementById('reciterSpeedInput').value) || 1.0,
-        transitionStyle: document.getElementById('transitionStyleSelect').value || null
+        transitionStyle: document.querySelector('input[name="transitionStyle"]:checked')?.value || 'crossfade'
     };
 
     if (!Number.isInteger(payload.surah) || !Number.isInteger(payload.startAyah) ||

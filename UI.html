@@ -169,15 +169,40 @@
                     </div>
                 </div>
 
-                <div class="col-span-full animation-choice">
-                    <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80" for="transitionStyleSelect">حركة الانتقال بين الآيات</label>
-                    <select id="transitionStyleSelect" class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer focus-visible:outline-none">
-                        <option value="crossfade" selected>تلاشي متداخل هادئ (افتراضي)</option>
-                        <option value="fadeblack">تلاشي عبر الأسود</option>
-                        <option value="cut">قطع مباشر</option>
-                    </select>
-                    <p class="mt-1.5 text-sm text-ink/70">تؤثر الحركة على الصورة فقط؛ تظل التلاوة متصلة وبمدتها الأصلية.</p>
-                </div>
+                <fieldset class="col-span-full animation-choice">
+                    <legend class="mb-1 text-[0.95rem] font-semibold text-ink/80">انتقال المشاهد</legend>
+                    <p class="mb-3 text-sm text-ink/70" id="transitionHelp">اختر إيقاعاً بصرياً هادئاً؛ الصوت يبقى متصلاً دون تغيير.</p>
+                    <div class="transition-grid" role="radiogroup" aria-describedby="transitionHelp">
+                        <label class="transition-option">
+                            <input type="radio" name="transitionStyle" value="crossfade" checked />
+                            <span class="transition-card">
+                                <span class="transition-preview preview-crossfade" aria-hidden="true"><i></i><i></i></span>
+                                <span class="transition-copy"><strong>تلاشي ناعم</strong><small>بين كل آية وأخرى</small></span>
+                            </span>
+                        </label>
+                        <label class="transition-option">
+                            <input type="radio" name="transitionStyle" value="smooth" />
+                            <span class="transition-card">
+                                <span class="transition-preview preview-spaced" aria-hidden="true"><i></i><i></i></span>
+                                <span class="transition-copy"><strong>تلاشي متباعد</strong><small>تغيير بصري أقل</small></span>
+                            </span>
+                        </label>
+                        <label class="transition-option">
+                            <input type="radio" name="transitionStyle" value="fadeblack" />
+                            <span class="transition-card">
+                                <span class="transition-preview preview-fadeblack" aria-hidden="true"><i></i><i></i></span>
+                                <span class="transition-copy"><strong>مرور عبر العتمة</strong><small>فاصل هادئ بين المشاهد</small></span>
+                            </span>
+                        </label>
+                        <label class="transition-option">
+                            <input type="radio" name="transitionStyle" value="cut" />
+                            <span class="transition-card">
+                                <span class="transition-preview preview-cut" aria-hidden="true"><i></i><i></i></span>
+                                <span class="transition-copy"><strong>تغيير مباشر</strong><small>دون مؤثر انتقال</small></span>
+                            </span>
+                        </label>
+                    </div>
+                </fieldset>
 
                 <div>
                     <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80" for="formatSelect">تنسيق
@@ -317,7 +342,7 @@
     </main>
 
     <footer class="relative z-10 pb-7 text-center text-xs text-ink/60">
-        <span>الإصدار <span id="appVersion">0.3.0</span></span>
+        <span>الإصدار <span id="appVersion">0.4.0</span></span>
     </footer>
 
     <script src="main.js"></script>

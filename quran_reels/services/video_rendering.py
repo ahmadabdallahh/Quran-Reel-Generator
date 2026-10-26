@@ -37,8 +37,9 @@ def _compute_xfade_pairs(transition_style, n, xfade_d):
     if transition_style in ('cinematic', 'cut'):
         return [False] * (n - 1)
     if transition_style == 'smooth':
-        every = max(1, n // 3)
-        return [((i + 1) % every == 0) for i in range(n - 1)]
+        # Keep most ayah boundaries visually still, with an occasional gentle
+        # dissolve to mark a longer passage without distracting from recitation.
+        return [((i + 1) % 3 == 0) for i in range(n - 1)]
     # Crossfade, fade-through-black, and legacy dynamic all apply at every cut.
     return [True] * (n - 1)
 
