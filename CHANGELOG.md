@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0 — 2026-10-26
+
+### Added
+
+- Added crossfade, fade-through-black, and direct-cut transitions between ayahs.
+
+### Fixed
+
+- Prevented render workers from reading or deleting an incomplete background cache file.
+
 ## 0.1.2 — 2026-10-26
 
 ### Maintenance

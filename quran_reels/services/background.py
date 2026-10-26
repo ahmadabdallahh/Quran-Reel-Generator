@@ -23,6 +23,8 @@ import logging
 import json
 import os
 import subprocess
+import tempfile
+import threading
 from typing import List, Optional, Union
 
 from quran_reels.config import (
@@ -245,6 +247,16 @@ def get_next_background(
 
 # Legacy background cache helpers remain available through this service.
 BG_CACHE = {}
+_BG_CACHE_LOCKS = {}
+_BG_CACHE_LOCKS_GUARD = threading.Lock()
+
+
+def _cache_lock(path):
+    """Return the shared in-process lock for one preprocessed cache path."""
+    with _BG_CACHE_LOCKS_GUARD:
+        return _BG_CACHE_LOCKS.setdefault(path, threading.Lock())
+
+
 def init_bg_cache():
     """Scan background folders once at startup"""
     from main import BACKGROUND_VIDEO_EXTENSIONS, VISION_DIR, get_available_templates
@@ -307,76 +319,96 @@ def pick_bg(style='nature', count=1):
         else:
             return [os.path.join(VISION_DIR, f) for f in selected]
 def get_preprocessed_bg(bg_path, target_w=TARGET_W, target_h=TARGET_H):
-    """Get or create preprocessed background video (cached)"""
+    """Get or create a validated, atomically published background cache."""
     from main import BG_CACHE_DIR, FFMPEG_EXE, FFPROBE_EXE
     os.makedirs(BG_CACHE_DIR, exist_ok=True)
     base = os.path.splitext(os.path.basename(bg_path))[0]
     cached_path = os.path.join(BG_CACHE_DIR, f"{base}_{target_w}x{target_h}.mp4")
 
-    if os.path.isfile(cached_path):
-        # Check if file is valid (not 0 or too small, which indicates corruption)
-        if os.path.getsize(cached_path) > 5000:  # At least 5KB
-            # Additional validation: try to read the file with FFprobe
-            try:
-                result = subprocess.run([
-                    FFPROBE_EXE,
-                    '-v', 'error',
-                    '-show_format',
-                    '-show_streams',
-                    cached_path
-                ], capture_output=True, text=True, timeout=10)
-                if result.returncode == 0:
-                    logging.debug(f"Using cached background: {os.path.basename(cached_path)}")
-                    return cached_path
-                else:
-                    logging.warning(f"Corrupted cache file (FFprobe failed): {cached_path}")
-            except Exception as e:
-                logging.warning(f"Cache validation failed: {e}")
+    # Multiple ayah workers can request the same background at once. Serialize
+    # cache validation/builds in-process, and publish only complete MP4s so
+    # render workers never open a file while FFmpeg is still writing it.
+    with _cache_lock(os.path.abspath(cached_path)):
+        if os.path.isfile(cached_path):
+            if os.path.getsize(cached_path) > 5000:
+                try:
+                    result = subprocess.run([
+                        FFPROBE_EXE, '-v', 'error', '-show_format',
+                        '-show_streams', cached_path,
+                    ], capture_output=True, text=True, timeout=10)
+                    if result.returncode == 0 and "codec_type=video" in result.stdout:
+                        logging.debug(
+                            f"Using cached background: {os.path.basename(cached_path)}"
+                        )
+                        return cached_path
+                    logging.warning(
+                        f"Corrupted cache file (FFprobe failed): {cached_path}"
+                    )
+                except Exception as exc:
+                    logging.warning(f"Cache validation failed: {exc}")
+            else:
+                logging.warning(f"Cache file too small: {cached_path}")
 
-            # Remove corrupted file
             try:
                 os.remove(cached_path)
                 logging.info(f"Removed corrupted cache file: {cached_path}")
-            except:
+            except FileNotFoundError:
                 pass
-        else:
-            logging.warning(f"Cache file too small: {cached_path}")
-            try:
-                os.remove(cached_path)
-            except:
-                pass
+            except OSError as exc:
+                logging.warning(f"Could not remove invalid cache file: {exc}")
 
-    # Normalize BG to avoid FFmpeg concat/filter issues (fps/pix_fmt/scale)
-    logging.info(f"Preprocessing background: {os.path.basename(bg_path)}")
-    vf = f"scale={target_w}:{target_h}:force_original_aspect_ratio=increase,crop={target_w}:{target_h},fps=30,format=yuv420p"
-    cmd = [
-        FFMPEG_EXE, "-y", "-i", bg_path,
-        "-vf", vf, "-an",
-        "-r", "30",
-        "-c:v", "libx264",
-        "-preset", "ultrafast", "-crf", "32", "-threads", "4",
-        "-pix_fmt", "yuv420p",
-        cached_path
-    ]
+        # FFmpeg writes to a unique sibling file. os.replace publishes it in a
+        # single filesystem operation only after FFprobe accepts the result.
+        fd, temp_path = tempfile.mkstemp(
+            prefix=f".{base}_{target_w}x{target_h}.",
+            suffix=".tmp.mp4",
+            dir=BG_CACHE_DIR,
+        )
+        os.close(fd)
+        vf = (
+            f"scale={target_w}:{target_h}:force_original_aspect_ratio=increase,"
+            f"crop={target_w}:{target_h},fps=30,format=yuv420p"
+        )
+        cmd = [
+            FFMPEG_EXE, "-y", "-i", bg_path,
+            "-vf", vf, "-an", "-r", "30",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "32",
+            "-threads", "4", "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart", temp_path,
+        ]
 
-    try:
-        logging.info(f"Running FFmpeg preprocessing: {' '.join(cmd[:8])}...")
-        result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
+        try:
+            logging.info(f"Preprocessing background: {os.path.basename(bg_path)}")
+            subprocess.run(
+                cmd, check=True, capture_output=True, text=True, timeout=120,
+            )
+            if not os.path.isfile(temp_path) or os.path.getsize(temp_path) <= 5000:
+                raise RuntimeError("FFmpeg produced an empty or undersized cache file")
+            probe = subprocess.run(
+                [FFPROBE_EXE, '-v', 'error', '-show_format', '-show_streams', temp_path],
+                capture_output=True, text=True, timeout=10,
+            )
+            if probe.returncode != 0 or "codec_type=video" not in probe.stdout:
+                raise RuntimeError(f"FFprobe rejected preprocessed video: {probe.stderr.strip()}")
 
-        # Verify the output file was created successfully
-        if os.path.exists(cached_path) and os.path.getsize(cached_path) > 5000:
+            os.replace(temp_path, cached_path)
             logging.info(f"Background cached successfully: {os.path.basename(cached_path)}")
             return cached_path
-        else:
-            logging.error(f"FFmpeg output file invalid: {cached_path}")
-            return bg_path  # Fallback to original
-
-    except subprocess.TimeoutExpired:
-        logging.warning(f"Background preprocessing timeout, using original: {os.path.basename(bg_path)}")
-        return bg_path  # Fallback to original
-    except subprocess.CalledProcessError as e:
-        logging.error(f"Background preprocessing failed: {e.stderr}")
-        return bg_path  # Fallback to original
-    except Exception as e:
-        logging.error(f"Unexpected error in preprocessing: {e}")
-        return bg_path  # Fallback to original
+        except subprocess.TimeoutExpired:
+            logging.warning(
+                f"Background preprocessing timeout, using original: {os.path.basename(bg_path)}"
+            )
+            return bg_path
+        except subprocess.CalledProcessError as exc:
+            logging.error(f"Background preprocessing failed: {exc.stderr}")
+            return bg_path
+        except Exception as exc:
+            logging.error(f"Unexpected error in preprocessing: {exc}")
+            return bg_path
+        finally:
+            try:
+                os.remove(temp_path)
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                logging.warning(f"Could not remove temporary background cache: {exc}")

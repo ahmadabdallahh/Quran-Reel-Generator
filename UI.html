@@ -172,13 +172,11 @@
                 <div class="col-span-full animation-choice">
                     <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80" for="transitionStyleSelect">حركة الانتقال بين الآيات</label>
                     <select id="transitionStyleSelect" class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3.5 text-ink transition cursor-pointer focus-visible:outline-none">
-                        <option value="" selected>افتراضي حسب الخلفية</option>
-                        <option value="cinematic">سينمائي هادئ</option>
-                        <option value="dynamic">انتقال متتابع</option>
-                        <option value="smooth">انتقال متباعد</option>
+                        <option value="crossfade" selected>تلاشي متداخل هادئ (افتراضي)</option>
+                        <option value="fadeblack">تلاشي عبر الأسود</option>
                         <option value="cut">قطع مباشر</option>
                     </select>
-                    <p class="mt-1.5 text-sm text-ink/70">تؤثر الحركة على انتقال الصورة فقط؛ تظل التلاوة متصلة دون تغيير.</p>
+                    <p class="mt-1.5 text-sm text-ink/70">تؤثر الحركة على الصورة فقط؛ تظل التلاوة متصلة وبمدتها الأصلية.</p>
                 </div>
 
                 <div>
@@ -315,7 +313,7 @@
     </main>
 
     <footer class="relative z-10 pb-7 text-center text-xs text-ink/60">
-        <span>الإصدار <span id="appVersion">0.1.2</span></span>
+        <span>الإصدار <span id="appVersion">0.2.0</span></span>
     </footer>
 
     <script src="main.js"></script>

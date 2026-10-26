@@ -29,26 +29,15 @@ HIGHLIGHT_MAX_LAYERS = 60
 
 
 def _compute_xfade_pairs(transition_style, n, xfade_d):
-    """Return a list of booleans of length ``n-1`` marking which consecutive
-    segment pairs get a real xfade (True) vs a hard cut with xfade_d=0 (False).
-
-    transition_style:
-      - cinematic : False * (n-1)  -- no xfade, rely on per-segment fade in/out
-      - cut       : False * (n-1)  -- hard cuts only
-      - dynamic   : True  * (n-1)  -- xfade every consecutive pair
-      - smooth    : True every 3rd pair (n//3); hard cut the rest
-      - unknown   : treated as dynamic
-    """
+    """Return which adjacent ayah clips receive an overlapping transition."""
     if n <= 1:
         return []
     if transition_style in ('cinematic', 'cut'):
         return [False] * (n - 1)
-    if transition_style == 'dynamic':
-        return [True] * (n - 1)
     if transition_style == 'smooth':
         every = max(1, n // 3)
         return [((i + 1) % every == 0) for i in range(n - 1)]
-    # Unknown / future styles default to dynamic for visual continuity
+    # Crossfade, fade-through-black, and legacy dynamic all apply at every cut.
     return [True] * (n - 1)
 
 

@@ -95,41 +95,41 @@ OUTPUT_FORMATS = {
 # =============================================================================
 # Visual templates
 # =============================================================================
-# Each template now drives only the background style and the crossfade
-# transition between ayahs.  Text-rendering fields (text_color, font,
+# Each template now drives only the background style and transition between
+# ayahs. Text-rendering fields (text_color, font,
 # font_size_mult, glow_color, glow_radius, text_animation) have been
 # removed along with the rest of the text-on-video feature.
 
 TEMPLATES = {
     'ramadan': {
         'bg_style': 'night',
-        'transition': 'fade',
-        'transition_style': 'cinematic',
+        'transition': 'crossfade',
+        'transition_style': 'crossfade',
     },
     'normal':  {
         'bg_style': 'nature',
-        'transition': 'fade',
-        'transition_style': 'cinematic',
+        'transition': 'crossfade',
+        'transition_style': 'crossfade',
     },
     'masjid':  {
         'bg_style': 'masjid',
-        'transition': 'fade',
-        'transition_style': 'cinematic',
+        'transition': 'crossfade',
+        'transition_style': 'crossfade',
     },
     'islamic': {
         'bg_style': 'islamic',
-        'transition': 'wipe',
-        'transition_style': 'cinematic',
+        'transition': 'crossfade',
+        'transition_style': 'crossfade',
     },
     'forest': {
         'bg_style': 'forest',
-        'transition': 'fade',
-        'transition_style': 'cinematic',
+        'transition': 'crossfade',
+        'transition_style': 'crossfade',
     },
     'trees': {
         'bg_style': 'trees',
-        'transition': 'fade',
-        'transition_style': 'cinematic',
+        'transition': 'crossfade',
+        'transition_style': 'crossfade',
     },
 }
 
@@ -147,16 +147,13 @@ TEMPLATE_LABELS = {
 BACKGROUND_VIDEO_EXTENSIONS = ('.mp4', '.mov')
 
 # =============================================================================
-# Video transitions (legacy from text-on-video era)
+# Video transitions between ayahs. These affect video only; the recitation
+# audio remains concatenated at its original duration.
 # =============================================================================
 
 VIDEO_TRANSITIONS = {
-    'fade':       {'type': 'fade',     'duration': 0.5, 'ffmpeg_filter': 'fade=out:st={duration}:d={duration}'},
-    'dissolve':   {'type': 'dissolve', 'duration': 0.5, 'ffmpeg_filter': 'xfade=transition=fade:duration={duration}'},
-    'wipe':       {'type': 'wipe',     'duration': 0.5, 'direction': 'right', 'ffmpeg_filter': 'xfade=transition=wipeleft:duration={duration}'},
-    'slide':      {'type': 'slide',    'duration': 0.5, 'direction': 'left',  'ffmpeg_filter': 'xfade=transition=slideleft:duration={duration}'},
-    'cross_zoom': {'type': 'zoom',     'duration': 0.5, 'ffmpeg_filter': 'xfade=transition=zoomin:duration={duration}'},
-    'pixelate':   {'type': 'pixelate', 'duration': 0.5, 'ffmpeg_filter': 'xfade=transition=pixelize:duration={duration}'},
+    'crossfade': {'type': 'fade', 'duration': 0.45},
+    'fadeblack': {'type': 'fadeblack', 'duration': 0.45},
 }
 
 # =============================================================================

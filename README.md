@@ -11,7 +11,7 @@ A tool that builds vertical Quran recitation videos (Reels / Shorts / TikTok).
 You pick a reciter, a surah, and the ayahs — the app downloads the audio,
 renders the ayah text on screen, and merges everything over background video.
 
-**Current version: 0.1.2**
+**Current version: 0.2.0**
 
 **In 30 seconds:** form in → one MP4 out (`outputs/video/`).
 
@@ -163,7 +163,9 @@ card with the video player on the other.
     length across the ayah; it is not a measured word timestamp from the reciter.
 11. **Max duration (optional)** — caps the video length; extra ayahs are dropped.
 12. **Recitation speed** — 0.5x slower … 2x faster, pitch unchanged.
-13. **Transition style** — how segments blend into each other.
+13. **Transition style** — choose a gentle crossfade (default), fade through
+    black, or a direct cut. Transitions affect video only; recitation audio
+    keeps its original timing and duration.
 14. **Format** — Reels/TikTok (9:16), Story (9:16), square Post (1:1), or
     YouTube (16:9).
 15. Press **Preview** for a quick one-ayah test, or **Generate Video** for the

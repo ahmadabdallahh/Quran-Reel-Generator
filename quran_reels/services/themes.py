@@ -43,7 +43,7 @@ def get_available_templates() -> dict:
         ):
             available[key] = {
                 'bg_style': name,
-                'transition': 'fade',
-                'transition_style': 'cinematic',
+                'transition': 'crossfade',
+                'transition_style': 'crossfade',
             }
     return available

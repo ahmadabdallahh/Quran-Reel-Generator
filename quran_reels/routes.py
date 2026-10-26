@@ -48,7 +48,9 @@ def _validated_api_payload():
         return None, (jsonify({'error': 'تنسيق الفيديو المختار غير صالح'}), 400)
     if template not in get_available_templates():
         return None, (jsonify({'error': 'القالب المختار غير صالح'}), 400)
-    if transition_style not in (None, 'cinematic', 'dynamic', 'smooth', 'cut'):
+    if transition_style not in (
+            None, 'crossfade', 'fadeblack', 'cut',
+            'cinematic', 'dynamic', 'smooth'):
         return None, (jsonify({'error': 'أسلوب الانتقال المختار غير صالح'}), 400)
 
     return {

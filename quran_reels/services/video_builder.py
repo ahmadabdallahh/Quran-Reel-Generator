@@ -147,13 +147,16 @@ def _xfade_concat_command(segment_results, template_config,
     """Build the configured transition command, or hard-cut when disabled."""
     from main import FFMPEG_EXE
     durations = _probe_segment_durations(segment_results)
-    transition_key = template_config.get('transition', 'fade')
+    transition_style = template_config.get('transition_style', 'crossfade')
+    transition_key = (
+        transition_style if transition_style in ('crossfade', 'fadeblack')
+        else template_config.get('transition', 'crossfade')
+    )
     transition = VIDEO_TRANSITIONS.get(
-        transition_key, VIDEO_TRANSITIONS.get('fade'),
+        transition_key, VIDEO_TRANSITIONS['crossfade'],
     )
     transition_name = transition['type']
     transition_duration = transition.get('duration', 0.5)
-    transition_style = template_config.get('transition_style', 'cinematic')
     pairs = _compute_xfade_pairs(
         transition_style, len(segment_results), transition_duration,
     )
@@ -330,9 +333,11 @@ def _build_ayah_args(job, reciter_id, surah, start_ayah, last_ayah, template,
     if text_position not in TEXT_POSITIONS:
         text_position = TEXT_POSITION_DEFAULT
     total = last_ayah - start_ayah + 1
+    # Ayah clips stay visually complete here; the concat stage applies the
+    # selected boundary transition once, avoiding doubled fades to black.
     return [
         (job, reciter_id, surah, ayah, index, template, bg_style, quality,
-         reciter_speed, index == total, show_text, highlight_words,
+         reciter_speed, True, show_text, highlight_words,
          text_position, frame_size, include_bismillah)
         for index, ayah in enumerate(range(start_ayah, last_ayah + 1), start=1)
     ]
