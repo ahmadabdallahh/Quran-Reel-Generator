@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.0 — 2026-10-26
+
+### Added
+
+- Desktop toast (`notify-send`) and browser notifications when a render
+  finishes or fails, summarising the surah, ayah range, duration, and file
+  size in Arabic.
+- Event feed on `/api/progress` plus a "finished while you were away" banner,
+  so a completion is never lost when the tab was closed and the server runs
+  headless.
+- `QURAN_NOTIFY_ENABLED` and `QURAN_NOTIFY_URGENCY` to control desktop toasts.
+
+### Changed
+
+- Preview renders stay silent by design: `build_video(..., notify=False)`.
+
 ## 0.7.1 — 2026-10-26
 
 ### Improved
