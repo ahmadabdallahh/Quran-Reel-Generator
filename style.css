@@ -11,6 +11,9 @@
 :root {
     --accent: var(--color-action);
     --accent-ink: var(--color-actionink);
+    --danger-ink: #8a2f24;
+    --danger-bg: #fff1ed;
+    --danger-border: #d89886;
 }
 
 @font-face {
@@ -783,15 +786,17 @@ input:-webkit-autofill {
 
 .inline-error {
     padding: 12px 16px;
-    color: #8a2f24;
-    background: #fff1ed;
-    border: 1px solid #d89886;
+    color: var(--danger-ink);
+    background: var(--danger-bg);
+    border: 1px solid var(--danger-border);
     border-radius: 14px;
 }
 
 .inline-error[hidden],
 .retry-button[hidden],
-.cancel-button[hidden] {
+.cancel-button[hidden],
+.missed-banner[hidden],
+.missed-banner-link[hidden] {
     display: none;
 }
 
@@ -808,13 +813,9 @@ input:-webkit-autofill {
     animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.missed-banner[hidden] {
-    display: none;
-}
-
 .missed-banner.is-error {
-    border-color: #d89886;
-    background: #fff1ed;
+    border-color: var(--danger-border);
+    background: var(--danger-bg);
 }
 
 .missed-banner-icon {
@@ -826,7 +827,7 @@ input:-webkit-autofill {
 }
 
 .missed-banner.is-error .missed-banner-icon {
-    color: #8a2f24;
+    color: var(--danger-ink);
 }
 
 .missed-banner-text {
@@ -861,10 +862,6 @@ input:-webkit-autofill {
 
 .missed-banner-link:hover {
     background: var(--accent-ink);
-}
-
-.missed-banner-link[hidden] {
-    display: none;
 }
 
 .missed-banner-dismiss {
@@ -918,10 +915,10 @@ input:-webkit-autofill {
     gap: 9px;
     margin: 10px 0;
     padding: 10px 16px;
-    color: #8a2f24;
+    color: var(--danger-ink);
     font-weight: 700;
-    background: #fff1ed;
-    border: 1px solid #d89886;
+    background: var(--danger-bg);
+    border: 1px solid var(--danger-border);
     border-radius: 12px;
     cursor: pointer;
     transition: background-color 160ms ease, border-color 160ms ease, opacity 160ms ease;
@@ -933,7 +930,7 @@ input:-webkit-autofill {
 }
 
 .cancel-button:focus-visible {
-    outline: 3px solid color-mix(in srgb, #8a2f24 35%, transparent);
+    outline: 3px solid color-mix(in srgb, var(--danger-ink) 35%, transparent);
     outline-offset: 2px;
 }
 

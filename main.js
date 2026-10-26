@@ -32,6 +32,11 @@ const VERSE_COUNTS = {
     111: 5, 112: 4, 113: 5, 114: 6
 };
 
+// --- Tunables ---
+const PROGRESS_POLL_INTERVAL_MS = 1000;
+const THEME_PREVIEW_ROTATE_MS = 2800;
+const TITLE_FLASH_INTERVAL_MS = 1500;
+
 // --- DOM Elements ---
 const surahSelect = document.getElementById('surahSelect');
 const surahSearch = document.getElementById('surahSearch');
@@ -46,6 +51,15 @@ const playerFrame = document.getElementById('playerFrame');
 const personNameInput = document.getElementById('personName');
 const backgroundIntervalInput = document.getElementById('backgroundInterval');
 const backgroundIntervalUnit = document.getElementById('backgroundIntervalUnit');
+const bismillahCheckbox = document.getElementById('bismillahCheckbox');
+const showTextCheckbox = document.getElementById('showTextCheckbox');
+const highlightWordsCheckbox = document.getElementById('highlightWordsCheckbox');
+const textPositionSelect = document.getElementById('textPositionSelect');
+const textColorSelect = document.getElementById('textColorSelect');
+const targetDurationInput = document.getElementById('targetDurationInput');
+const reciterSpeedInput = document.getElementById('reciterSpeedInput');
+const highlightWordsStatus = document.getElementById('highlightWordsStatus');
+const appVersion = document.getElementById('appVersion');
 
 function syncBackgroundIntervalLimit() {
     const byAyah = backgroundIntervalUnit.value === 'ayahs';
@@ -96,6 +110,7 @@ const missedBannerDismiss = document.getElementById('missedBannerDismiss');
 
 const videoPreviewWrapper = document.getElementById('videoPreviewWrapper');
 const previewVideo = document.getElementById('previewVideo');
+const downloadLink = document.getElementById('downloadLink');
 
 // Button labels carry drawn SVG icons now, so restore the captured markup
 // instead of a text-only string when a job ends.
@@ -115,73 +130,83 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 function initSurahs() {
+    populateSurahOptions();
+    initSurahSearch();
+    initAyahRange();
+}
+
+function populateSurahOptions() {
     SURAH_NAMES.forEach((name, index) => {
         const option = document.createElement('option');
         option.value = index + 1;
         option.textContent = `${index + 1}. ${name}`;
         surahSelect.appendChild(option);
     });
+}
 
-    // Add search functionality
+function initSurahSearch() {
     surahSearch.addEventListener('input', (e) => {
         const searchTerm = e.target.value.toLowerCase();
         const options = surahSelect.querySelectorAll('option');
 
-        options.forEach(option => {
+        options.forEach((option) => {
             const text = option.textContent.toLowerCase();
-            const matches = text.includes(searchTerm);
-            option.style.display = matches ? 'block' : 'none';
+            option.style.display = text.includes(searchTerm) ? 'block' : 'none';
         });
 
         // Show first matching option
-        const firstVisible = Array.from(options).find(opt => opt.style.display !== 'none');
+        const firstVisible = Array.from(options).find((opt) => opt.style.display !== 'none');
         if (firstVisible && searchTerm.length > 0) {
             surahSelect.value = firstVisible.value;
             surahSelect.dispatchEvent(new Event('change'));
         }
     });
+}
 
-    const updateMax = () => {
-        const count = VERSE_COUNTS[surahSelect.value] || 7;
-        startAyahInput.max = count;
-        endAyahInput.max = count;
+function syncAyahMax() {
+    const count = VERSE_COUNTS[surahSelect.value] || 7;
+    startAyahInput.max = count;
+    endAyahInput.max = count;
 
-        // Ensure current values don't exceed new max
-        if (parseInt(startAyahInput.value) > count) startAyahInput.value = count;
-        if (parseInt(endAyahInput.value) > count) endAyahInput.value = count;
-    };
+    // Ensure current values don't exceed new max
+    if (parseInt(startAyahInput.value) > count) startAyahInput.value = count;
+    if (parseInt(endAyahInput.value) > count) endAyahInput.value = count;
+}
 
+function initAyahRange() {
     surahSelect.addEventListener('change', () => {
         const count = VERSE_COUNTS[surahSelect.value];
-        updateMax();
+        syncAyahMax();
         startAyahInput.value = 1;
         endAyahInput.value = Math.min(5, count);
     });
 
     // Run once on init to set correct max for the first surah
-    updateMax();
+    syncAyahMax();
 
     // Prevent manual entry exceeding max
-    [startAyahInput, endAyahInput].forEach(input => {
-        input.addEventListener('input', () => {
-            const max = parseInt(input.max);
-            if (parseInt(input.value) > max) input.value = max;
-            if (parseInt(input.value) < 1) input.value = 1;
-        });
+    [startAyahInput, endAyahInput].forEach((input) => {
+        input.addEventListener('input', () => clampAyahInput(input));
     });
 
     // Prevent cross-over (start > end or end < start)
     startAyahInput.addEventListener('change', () => {
-        const start = parseInt(startAyahInput.value);
-        const end = parseInt(endAyahInput.value);
-        if (start > end) endAyahInput.value = start;
+        if (parseInt(startAyahInput.value) > parseInt(endAyahInput.value)) {
+            endAyahInput.value = startAyahInput.value;
+        }
     });
 
     endAyahInput.addEventListener('change', () => {
-        const start = parseInt(startAyahInput.value);
-        const end = parseInt(endAyahInput.value);
-        if (end < start) startAyahInput.value = end;
+        if (parseInt(endAyahInput.value) < parseInt(startAyahInput.value)) {
+            startAyahInput.value = endAyahInput.value;
+        }
     });
+}
+
+function clampAyahInput(input) {
+    const max = parseInt(input.max);
+    if (parseInt(input.value) > max) input.value = max;
+    if (parseInt(input.value) < 1) input.value = 1;
 }
 
 function initCounters() {
@@ -212,7 +237,6 @@ function initCounters() {
 
     // Live-update the reciter-speed label as the user drags the slider and
     // paint the emerald fill from the RTL minimum (right) to the thumb.
-    const reciterSpeedInput = document.getElementById('reciterSpeedInput');
     const reciterSpeedValue = document.getElementById('reciterSpeedValue');
     if (reciterSpeedInput && reciterSpeedValue) {
         const paintFill = () => {
@@ -234,7 +258,7 @@ async function loadConfig() {
         const response = await fetch(`${API_BASE}/api/config`);
         const data = await response.json();
         if (data.version) {
-            document.getElementById('appVersion').textContent = data.version;
+            appVersion.textContent = data.version;
         }
 
         // Load Reciters (Synchronize with RECITERS_MAP from backend)
@@ -301,7 +325,7 @@ function renderThemeOptions(themes) {
                 previewTimer = window.setTimeout(() => {
                     previewIndex = (previewIndex + 1) % previewUrls.length;
                     playThemePreview();
-                }, 2800);
+                }, THEME_PREVIEW_ROTATE_MS);
             }
         };
 
@@ -335,8 +359,61 @@ function renderThemeOptions(themes) {
     templateGrid.replaceChildren(fragment);
 }
 
-// Global alias for compatibility
-const loadAvailableFonts = loadConfig;
+// --- Form payloads ---
+// One reader per payload keeps each request in sync with the form instead of
+// re-querying every control at each call site.
+
+function checkedRadioValue(name, fallback) {
+    return document.querySelector(`input[name="${name}"]:checked`)?.value || fallback;
+}
+
+function readTextSettings() {
+    return {
+        showText: showTextCheckbox.checked,
+        highlightWords: highlightWordsCheckbox.checked,
+        textPosition: textPositionSelect.value,
+        textColor: textColorSelect.value,
+    };
+}
+
+function readCommonSettings() {
+    return {
+        reciter: reciterSelect.value,
+        surah: parseInt(surahSelect.value),
+        template: checkedRadioValue('template', 'normal'),
+        ...readTextSettings(),
+        backgroundMotion: checkedRadioValue('backgroundMotion', 'still'),
+        backgroundInterval: parseInt(backgroundIntervalInput.value, 10) || 15,
+        backgroundIntervalUnit: backgroundIntervalUnit.value,
+    };
+}
+
+function readTargetDuration() {
+    const value = parseInt(targetDurationInput.value, 10);
+    return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function readGeneratePayload() {
+    return {
+        ...readCommonSettings(),
+        startAyah: parseInt(startAyahInput.value),
+        endAyah: parseInt(endAyahInput.value),
+        quality: qualitySelect.value,
+        personName: personNameInput.value,
+        format: formatSelect.value,
+        includeBismillah: bismillahCheckbox.checked,
+        targetDurationSeconds: readTargetDuration(),
+        reciterSpeed: parseFloat(reciterSpeedInput.value) || 1.0,
+        transitionStyle: checkedRadioValue('transitionStyle', 'crossfade'),
+    };
+}
+
+function readPreviewPayload() {
+    return {
+        ...readCommonSettings(),
+        ayah: parseInt(startAyahInput.value),
+    };
+}
 
 
 // --- Logic Functions ---
@@ -344,6 +421,17 @@ let displayedLogs = 0;
 let progressInterval = null;
 
 const WORKING_LABEL = '<span>جاري العمل</span><span class="loading-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>';
+const PREVIEW_WORKING_LABEL = '<span>جاري إنشاء المعاينة</span><span class="loading-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>';
+
+function setGenerateWorking(working) {
+    generateBtn.disabled = working;
+    generateBtn.innerHTML = working ? WORKING_LABEL : generateBtnDefaultLabel;
+}
+
+function setPreviewWorking(working) {
+    previewBtn.disabled = working;
+    previewBtn.innerHTML = working ? PREVIEW_WORKING_LABEL : previewBtnDefaultLabel;
+}
 
 async function pollProgress() {
     try {
@@ -358,17 +446,14 @@ async function pollProgress() {
         }
 
         if (data.is_running && !progressInterval) {
-            progressInterval = setInterval(pollProgress, 1000);
-            generateBtn.disabled = true;
-            generateBtn.innerHTML = WORKING_LABEL;
+            progressInterval = setInterval(pollProgress, PROGRESS_POLL_INTERVAL_MS);
+            setGenerateWorking(true);
             previewBtn.disabled = true;
         } else if (!data.is_running && progressInterval) {
             clearInterval(progressInterval);
             progressInterval = null;
-            generateBtn.disabled = false;
-            generateBtn.innerHTML = generateBtnDefaultLabel;
-            previewBtn.disabled = false;
-            previewBtn.innerHTML = previewBtnDefaultLabel;
+            setGenerateWorking(false);
+            setPreviewWorking(false);
         }
     } catch (e) {
         console.error('Polling error:', e);
@@ -477,7 +562,7 @@ function flashTitle(text) {
     titleFlashTimer = setInterval(() => {
         document.title = showBadge ? `✅ ${text}` : titleFlashOriginal;
         showBadge = !showBadge;
-    }, 1500);
+    }, TITLE_FLASH_INTERVAL_MS);
     window.addEventListener('focus', stop);
     document.addEventListener('visibilitychange', onVisibilityChange);
 }
@@ -535,9 +620,33 @@ function resetPlayer() {
 }
 
 function updateUI(data) {
+    renderProgress(data);
+    renderStatus(data);
+    renderControls(data);
+
+    if (data.is_running) {
+        setPlayerState('building');
+    }
+
+    renderLogs(data);
+
+    if (data.is_complete && data.output_path) {
+        showFinishedVideo(data);
+    }
+
+    if (data.error) {
+        setPreviewWorking(false);
+        setPlayerState(previewVideo.src ? 'ready' : 'idle');
+    }
+}
+
+function renderProgress(data) {
     progressFill.style.width = `${data.percent}%`;
     progressPercent.textContent = `${data.percent}%`;
     progressTrack.setAttribute('aria-valuenow', String(data.percent));
+}
+
+function renderStatus(data) {
     statusText.textContent = data.error || data.status;
     if (data.is_running && Number.isFinite(data.eta_seconds) && data.eta_seconds > 0) {
         const seconds = Math.ceil(data.eta_seconds);
@@ -546,59 +655,51 @@ function updateUI(data) {
     } else {
         renderEta.textContent = data.is_running ? `المرحلة: ${data.stage || 'جاري المعالجة'}` : '';
     }
+}
+
+function renderControls(data) {
     retryBtn.hidden = !data.error;
     cancelBtn.hidden = !data.is_running;
     cancelBtn.disabled = Boolean(data.cancel_requested);
     cancelBtn.querySelector('.cancel-label').textContent = data.cancel_requested
         ? 'جارٍ الإلغاء...'
         : 'إلغاء العملية';
+}
 
-    if (data.is_running) {
-        setPlayerState('building');
-    }
-
+function renderLogs(data) {
     // Logs (textContent: build log text is never parsed as markup)
     while (displayedLogs < data.log.length) {
         appendLog(data.log[displayedLogs]);
         displayedLogs++;
     }
+}
 
-    if (data.is_complete && data.output_path) {
-        // Video filename is the last part of path
-        const filename = data.output_path.split(/[\\\/]/).pop();
-        const videoUrl = `${API_BASE}/outputs/video/${filename}`;
+function showFinishedVideo(data) {
+    // Video filename is the last part of path
+    const filename = data.output_path.split(/[\\\/]/).pop();
+    const videoUrl = `${API_BASE}/outputs/video/${filename}`;
 
-        // Set video source and show preview/download immediately
-        if (!previewVideo.src || !previewVideo.src.endsWith(filename)) {
-            previewVideo.src = videoUrl;
-            previewVideo.load();
-        }
-
-        setPlayerState('ready');
-
-        // Update download link - ensure it's always visible
-        const downloadLink = document.getElementById('downloadLink');
-        if (downloadLink) {
-            downloadLink.href = videoUrl;
-            downloadLink.textContent = 'تحميل الفيديو';
-        }
-
-        statusCard.classList.add('done');
-
-        // Bring the player into view and start playback (autoplay policies
-        // may block it — native controls let the user press play instead).
-        videoPreviewWrapper.scrollIntoView({
-            behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-            block: 'nearest'
-        });
-        previewVideo.play().catch(() => {});
+    // Set video source and show preview/download immediately
+    if (!previewVideo.src || !previewVideo.src.endsWith(filename)) {
+        previewVideo.src = videoUrl;
+        previewVideo.load();
     }
 
-    if (data.error) {
-        previewBtn.disabled = false;
-        previewBtn.innerHTML = previewBtnDefaultLabel;
-        setPlayerState(previewVideo.src ? 'ready' : 'idle');
-    }
+    setPlayerState('ready');
+
+    // Update download link - ensure it's always visible
+    downloadLink.href = videoUrl;
+    downloadLink.textContent = 'تحميل الفيديو';
+
+    statusCard.classList.add('done');
+
+    // Bring the player into view and start playback (autoplay policies
+    // may block it — native controls let the user press play instead).
+    videoPreviewWrapper.scrollIntoView({
+        behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        block: 'nearest'
+    });
+    previewVideo.play().catch(() => {});
 }
 
 if (missedBannerDismiss) {
@@ -629,31 +730,7 @@ cancelBtn.addEventListener('click', async () => {
 generateBtn.addEventListener('click', async (e) => {
     e.preventDefault();
 
-    const payload = {
-        reciter: reciterSelect.value,
-        surah: parseInt(surahSelect.value),
-        startAyah: parseInt(startAyahInput.value),
-        endAyah: parseInt(endAyahInput.value),
-        quality: qualitySelect.value,
-        template: document.querySelector('input[name="template"]:checked')?.value || 'normal',
-        personName: personNameInput.value,
-        format: formatSelect.value,
-        includeBismillah: document.getElementById('bismillahCheckbox').checked,
-        showText: document.getElementById('showTextCheckbox').checked,
-        highlightWords: document.getElementById('highlightWordsCheckbox').checked,
-        textPosition: document.getElementById('textPositionSelect').value,
-        textColor: document.getElementById('textColorSelect').value,
-        targetDurationSeconds: (() => {
-            const v = document.getElementById('targetDurationInput').value;
-            const n = parseInt(v, 10);
-            return Number.isFinite(n) && n > 0 ? n : null;
-        })(),
-        reciterSpeed: parseFloat(document.getElementById('reciterSpeedInput').value) || 1.0,
-        transitionStyle: document.querySelector('input[name="transitionStyle"]:checked')?.value || 'crossfade',
-        backgroundMotion: document.querySelector('input[name="backgroundMotion"]:checked')?.value || 'still',
-        backgroundInterval: parseInt(document.getElementById('backgroundInterval').value, 10) || 15,
-        backgroundIntervalUnit: document.getElementById('backgroundIntervalUnit').value
-    };
+    const payload = readGeneratePayload();
 
     if (!Number.isInteger(payload.surah) || !Number.isInteger(payload.startAyah) ||
         !Number.isInteger(payload.endAyah) || payload.startAyah < 1 ||
@@ -666,8 +743,7 @@ generateBtn.addEventListener('click', async (e) => {
     try {
         formError.hidden = true;
         resetPlayer();
-        generateBtn.disabled = true;
-        generateBtn.innerHTML = WORKING_LABEL;
+        setGenerateWorking(true);
 
         // Ask once, on a real user gesture (and only for a valid form), so
         // the browser may toast this render when it finishes in the
@@ -683,18 +759,16 @@ generateBtn.addEventListener('click', async (e) => {
         const data = await res.json().catch(() => ({}));
         if (res.ok && data.success) {
             if (!progressInterval) {
-                progressInterval = setInterval(pollProgress, 1000);
+                progressInterval = setInterval(pollProgress, PROGRESS_POLL_INTERVAL_MS);
             }
             pollProgress();
         } else {
-            generateBtn.disabled = false;
-            generateBtn.innerHTML = generateBtnDefaultLabel;
+            setGenerateWorking(false);
             formError.textContent = data.error || 'تعذر بدء إنشاء الفيديو. تحقق من المدخلات ثم حاول مجدداً.';
             formError.hidden = false;
         }
     } catch (e) {
-        generateBtn.disabled = false;
-        generateBtn.innerHTML = generateBtnDefaultLabel;
+        setGenerateWorking(false);
         formError.textContent = `تعذر الاتصال بالخادم: ${e.message}`;
         formError.hidden = false;
     }
@@ -709,22 +783,9 @@ generatorForm.addEventListener('submit', (e) => {
 });
 
 previewBtn.addEventListener('click', async () => {
-    const payload = {
-        reciter: reciterSelect.value,
-        surah: parseInt(surahSelect.value),
-        ayah: parseInt(startAyahInput.value),
-        template: document.querySelector('input[name="template"]:checked')?.value || 'normal',
-        showText: document.getElementById('showTextCheckbox').checked,
-        highlightWords: document.getElementById('highlightWordsCheckbox').checked,
-        textPosition: document.getElementById('textPositionSelect').value,
-        textColor: document.getElementById('textColorSelect').value,
-        backgroundMotion: document.querySelector('input[name="backgroundMotion"]:checked')?.value || 'still',
-        backgroundInterval: parseInt(document.getElementById('backgroundInterval').value, 10) || 15,
-        backgroundIntervalUnit: document.getElementById('backgroundIntervalUnit').value
-    };
+    const payload = readPreviewPayload();
 
-    previewBtn.disabled = true;
-    previewBtn.innerHTML = '<span>جاري إنشاء المعاينة</span><span class="loading-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>';
+    setPreviewWorking(true);
 
     try {
         resetPlayer();
@@ -738,21 +799,19 @@ previewBtn.addEventListener('click', async () => {
         const data = await res.json().catch(() => ({}));
         if (res.ok && (data.success !== false)) {
             if (!progressInterval) {
-                progressInterval = setInterval(pollProgress, 1000);
+                progressInterval = setInterval(pollProgress, PROGRESS_POLL_INTERVAL_MS);
             }
             pollProgress();
         } else {
             formError.textContent = data.error || 'تعذر إنشاء المعاينة. تحقق من الاتصال وحاول مجدداً.';
             formError.hidden = false;
-            previewBtn.disabled = false;
-            previewBtn.innerHTML = previewBtnDefaultLabel;
+            setPreviewWorking(false);
         }
     } catch (e) {
         console.error('Preview error:', e);
         formError.textContent = `تعذر الاتصال بالخادم: ${e.message}`;
         formError.hidden = false;
-        previewBtn.disabled = false;
-        previewBtn.innerHTML = previewBtnDefaultLabel;
+        setPreviewWorking(false);
     }
 });
 
@@ -764,15 +823,10 @@ retryBtn.addEventListener('click', () => {
 
 // Word highlighting uses the renderer's best-effort character-weighted
 // timing estimate; its UI label makes that limitation explicit.
-const showTextCheckbox = document.getElementById('showTextCheckbox');
-const highlightWordsCheckbox = document.getElementById('highlightWordsCheckbox');
-const textPositionSelect = document.getElementById('textPositionSelect');
-
 function syncHighlightToggle() {
     highlightWordsCheckbox.disabled = !showTextCheckbox.checked;
     textPositionSelect.disabled = !showTextCheckbox.checked;
-    const status = document.getElementById('highlightWordsStatus');
-    status.textContent = !showTextCheckbox.checked
+    highlightWordsStatus.textContent = !showTextCheckbox.checked
         ? 'يتطلب نص الآية'
         : (highlightWordsCheckbox.checked ? 'مفعّل' : 'متوقف');
 }
