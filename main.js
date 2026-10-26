@@ -44,6 +44,19 @@ const templateGrid = document.getElementById('templateGrid');
 const previewSkeleton = document.getElementById('previewSkeleton');
 const playerFrame = document.getElementById('playerFrame');
 const personNameInput = document.getElementById('personName');
+const backgroundIntervalInput = document.getElementById('backgroundInterval');
+const backgroundIntervalUnit = document.getElementById('backgroundIntervalUnit');
+
+function syncBackgroundIntervalLimit() {
+    const byAyah = backgroundIntervalUnit.value === 'ayahs';
+    backgroundIntervalInput.max = byAyah ? '12' : '120';
+    if (Number(backgroundIntervalInput.value) > Number(backgroundIntervalInput.max)) {
+        backgroundIntervalInput.value = backgroundIntervalInput.max;
+    }
+}
+
+backgroundIntervalUnit.addEventListener('change', syncBackgroundIntervalLimit);
+syncBackgroundIntervalLimit();
 
 function syncPreviewAspect() {
     const ratios = { reels: '9 / 16', story: '9 / 16', post: '1 / 1', youtube: '16 / 9' };
@@ -491,7 +504,9 @@ generateBtn.addEventListener('click', async (e) => {
         })(),
         reciterSpeed: parseFloat(document.getElementById('reciterSpeedInput').value) || 1.0,
         transitionStyle: document.querySelector('input[name="transitionStyle"]:checked')?.value || 'crossfade',
-        backgroundMotion: document.querySelector('input[name="backgroundMotion"]:checked')?.value || 'still'
+        backgroundMotion: document.querySelector('input[name="backgroundMotion"]:checked')?.value || 'still',
+        backgroundInterval: parseInt(document.getElementById('backgroundInterval').value, 10) || 15,
+        backgroundIntervalUnit: document.getElementById('backgroundIntervalUnit').value
     };
 
     if (!Number.isInteger(payload.surah) || !Number.isInteger(payload.startAyah) ||
@@ -551,7 +566,9 @@ previewBtn.addEventListener('click', async () => {
         showText: document.getElementById('showTextCheckbox').checked,
         highlightWords: document.getElementById('highlightWordsCheckbox').checked,
         textPosition: document.getElementById('textPositionSelect').value,
-        backgroundMotion: document.querySelector('input[name="backgroundMotion"]:checked')?.value || 'still'
+        backgroundMotion: document.querySelector('input[name="backgroundMotion"]:checked')?.value || 'still',
+        backgroundInterval: parseInt(document.getElementById('backgroundInterval').value, 10) || 15,
+        backgroundIntervalUnit: document.getElementById('backgroundIntervalUnit').value
     };
 
     previewBtn.disabled = true;

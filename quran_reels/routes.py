@@ -46,6 +46,11 @@ def _validated_api_payload():
     template = data.get('template', 'normal')
     transition_style = data.get('transitionStyle') or None
     background_motion = data.get('backgroundMotion', 'still')
+    background_interval_unit = data.get('backgroundIntervalUnit', 'seconds')
+    try:
+        background_interval = int(data.get('backgroundInterval', 15))
+    except (TypeError, ValueError):
+        return None, (jsonify({'error': 'مدة الخلفية أو عدد الآيات غير صالح'}), 400)
     if quality not in QUALITY_PRESETS:
         return None, (jsonify({'error': 'جودة الفيديو المختارة غير صالحة'}), 400)
     if format_type not in OUTPUT_FORMATS:
@@ -58,6 +63,11 @@ def _validated_api_payload():
         return None, (jsonify({'error': 'أسلوب الانتقال المختار غير صالح'}), 400)
     if background_motion not in BACKGROUND_MOTIONS:
         return None, (jsonify({'error': 'حركة الخلفية المختارة غير صالحة'}), 400)
+    if background_interval_unit not in ('seconds', 'ayahs'):
+        return None, (jsonify({'error': 'وحدة مدة الخلفية غير صالحة'}), 400)
+    maximum = 120 if background_interval_unit == 'seconds' else 12
+    if not 1 <= background_interval <= maximum:
+        return None, (jsonify({'error': 'مدة الخلفية يجب أن تكون بين 1 و120 ثانية أو من 1 إلى 12 آية'}), 400)
 
     return {
         'data': data,
@@ -72,6 +82,8 @@ def _validated_api_payload():
         'template': template,
         'transitionStyle': transition_style,
         'backgroundMotion': background_motion,
+        'backgroundInterval': background_interval,
+        'backgroundIntervalUnit': background_interval_unit,
     }, None
 
 
@@ -150,7 +162,8 @@ def generate_video():
               format_type, template, person_name, target_duration_seconds,
               include_bismillah, reciter_speed, transition_style_override,
               show_text, highlight_words, text_position,
-              payload['backgroundMotion']),
+              payload['backgroundMotion'], payload['backgroundInterval'],
+              payload['backgroundIntervalUnit']),
         daemon=True
     )
     thread.start()
@@ -205,7 +218,8 @@ def preview_video():
         target=build_video,
         args=(reciter_id, surah, ayah, ayah, 'low', 'reels', template, '', None,
               False, 1.0, None, show_text, highlight_words, text_position,
-              payload['backgroundMotion']),
+              payload['backgroundMotion'], payload['backgroundInterval'],
+              payload['backgroundIntervalUnit']),
         daemon=True
     )
     thread.start()

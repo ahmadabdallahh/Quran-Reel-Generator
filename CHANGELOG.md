@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0 — 2026-10-26
+
+### Added
+
+- Added background scene cadence controls by seconds or ayah count.
+- Kept the selected clip and camera movement continuous across ayahs in each
+  scene; short clips loop until the scene ends.
+
 ## 0.6.0 — 2026-10-26
 
 ### Added

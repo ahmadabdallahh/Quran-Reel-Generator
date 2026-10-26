@@ -32,14 +32,17 @@ HIGHLIGHT_MAX_LAYERS = 60
 
 
 def _background_motion_filter(motion, duration_sec, fps, frame_size,
-                              direction=1):
+                              direction=1, motion_offset_sec=0.0,
+                              motion_total_sec=None):
     """Return a subtle zoompan filter for one ayah's background only."""
     if motion not in BACKGROUND_MOTIONS or motion == 'still':
         return None
 
     frame_w, frame_h = frame_size
-    last_frame = max(1, round(duration_sec * fps) - 1)
-    progress = f"min(on/{last_frame},1)"
+    total = motion_total_sec or duration_sec
+    last_frame = max(1, round(total * fps) - 1)
+    frame_offset = max(0, round(motion_offset_sec * fps))
+    progress = f"min((on+{frame_offset})/{last_frame},1)"
     if motion == 'zoom_in':
         zoom = f"1.02+0.06*{progress}"
         x = "iw/2-iw/zoom/2"
@@ -59,13 +62,16 @@ def _background_motion_filter(motion, duration_sec, fps, frame_size,
 
 
 def _background_video_chain(input_index, output_label, duration_sec, fps,
-                            frame_size, motion, direction=1):
+                            frame_size, motion, direction=1,
+                            source_offset_sec=0.0, motion_offset_sec=0.0,
+                            motion_total_sec=None):
     chain = (
-        f"[{input_index}:v]trim=duration={duration_sec:.3f},"
+        f"[{input_index}:v]trim=start={source_offset_sec:.3f}:duration={duration_sec:.3f},"
         "setpts=PTS-STARTPTS"
     )
     motion_filter = _background_motion_filter(
         motion, duration_sec, fps, frame_size, direction,
+        motion_offset_sec, motion_total_sec,
     )
     if motion_filter:
         chain += f",fps={fps},{motion_filter}"
@@ -192,6 +198,8 @@ def build_segment_ffmpeg(
     ayah_num=None, surah_name=None, text_png_path=None, highlight=None,
     frame_size=(TARGET_W, TARGET_H), quality='medium',
     background_motion='still', motion_direction=1,
+    background_offset_sec=0.0, motion_offset_sec=0.0,
+    scene_duration_sec=None,
 ):
     """Build one video segment with FFmpeg — background + audio, with optional ayah number watermark.
 
@@ -217,6 +225,9 @@ def build_segment_ffmpeg(
         fallback, FR-011) when boxes/windows are missing or mismatched.
       background_motion: Optional subtle movement applied below text and
         highlighting, so Quran overlays remain fixed and readable.
+      background_offset_sec: Source offset within the selected scene clip.
+      motion_offset_sec: Elapsed time in the current scene, for continuous
+        movement across ayah boundaries.
     """
     from main import FFMPEG_EXE
     if not os.path.exists(audio_path):
@@ -334,7 +345,8 @@ def build_segment_ffmpeg(
     if n == 1:
         filt = _background_video_chain(
             0, last_v, duration_sec, quality_config['fps'], frame_size,
-            background_motion, motion_direction,
+            background_motion, motion_direction, background_offset_sec,
+            motion_offset_sec, scene_duration_sec,
         )
         if text_idx is not None:
             # Text above background, below outro fade — fade eases the
@@ -367,6 +379,7 @@ def build_segment_ffmpeg(
                 i, f"v{i}", part_dur, quality_config['fps'], frame_size,
                 background_motion,
                 motion_direction if i % 2 == 0 else -motion_direction,
+                background_offset_sec, motion_offset_sec, scene_duration_sec,
             ) + ";"
         v_parts += "".join([f"[v{i}]" for i in range(n)]) + f"concat=n={n}:v=1:a=0[bg];"
         filt = v_parts + f"[bg]null[{last_v}]"
@@ -431,6 +444,30 @@ def build_segment_ffmpeg(
     return output_path
 
 
+def prepare_single_ayah_audio(job, reciter_id, surah, ayah, idx,
+                              reciter_speed=1.0):
+    """Download and normalize one ayah before background scenes are planned."""
+    from main import FFMPEG_EXE
+    _job_local.ctx = job
+    raise_if_cancelled()
+    audio_path = download_audio(reciter_id, surah, ayah, idx)
+    if reciter_speed and reciter_speed != 1.0:
+        atempo = max(0.5, min(2.0, float(reciter_speed)))
+        sped_path = current_job().sped_path(idx)
+        cmd = [FFMPEG_EXE, '-y', '-hide_banner', '-loglevel', 'error',
+               '-i', audio_path, '-af', f'atempo={atempo:.3f}',
+               '-c:a', 'libmp3lame', '-b:a', '192k', sped_path]
+        res = run_cancellable(cmd, capture_output=True, text=True)
+        if res.returncode == 0 and os.path.exists(sped_path):
+            audio_path = sped_path
+        else:
+            logging.warning(
+                f"Segment {idx}: atempo pre-pass failed, using original audio: "
+                f"{res.stderr.strip()}"
+            )
+    return audio_path, get_audio_duration_ffprobe(audio_path)
+
+
 def process_single_ayah_ffmpeg(args):
     """Process one ayah: download audio, fetch background, build a video
     segment with the audio muxed onto the background.
@@ -445,7 +482,9 @@ def process_single_ayah_ffmpeg(args):
     from main import FFMPEG_EXE
     (job, reciter_id, surah, ayah, idx, template, bg_style, quality,
      reciter_speed, is_last, show_text, highlight_words,
-     text_position, frame_size, include_bismillah, background_motion) = args
+     text_position, frame_size, include_bismillah, background_motion,
+     prepared_audio, planned_background, background_offset_sec,
+     motion_offset_sec, scene_duration_sec, motion_direction) = args
 
     # Bind the parent build's JobContext to this worker thread so any
     # nested call to ``current_job()`` (e.g. inside ``download_audio``)
@@ -457,30 +496,7 @@ def process_single_ayah_ffmpeg(args):
 
     try:
         raise_if_cancelled()
-        # Download audio (no trimming, faster)
-        audio_path = download_audio(reciter_id, surah, ayah, idx)
-        raise_if_cancelled()
-        # Feature: reciter_speed — apply ffmpeg atempo to speed up / slow
-        # down the recitation without changing pitch.  Done as a separate
-        # pre-pass so the rest of the pipeline sees a normal mp3 file and
-        # doesn't need to know about tempo.  atempo is limited to [0.5,
-        # 2.0] per pass, so values outside that range are clamped.
-        if reciter_speed and reciter_speed != 1.0:
-            atempo = max(0.5, min(2.0, float(reciter_speed)))
-            sped_path = current_job().sped_path(idx)
-            cmd = [
-                FFMPEG_EXE, '-y', '-hide_banner', '-loglevel', 'error',
-                '-i', audio_path,
-                '-af', f'atempo={atempo:.3f}',
-                '-c:a', 'libmp3lame', '-b:a', '192k',
-                sped_path,
-            ]
-            res = run_cancellable(cmd, capture_output=True, text=True)
-            if res.returncode == 0 and os.path.exists(sped_path):
-                audio_path = sped_path
-                logging.debug(f"Segment {idx}: reciter_speed={reciter_speed} (atempo={atempo:.3f})")
-            else:
-                logging.warning(f"Segment {idx}: atempo pre-pass failed, using original audio: {res.stderr.strip()}")
+        audio_path = prepared_audio
         duration = get_audio_duration_ffprobe(audio_path)
         logging.debug(f"Segment {idx}: Audio duration = {duration:.2f}s")
 
@@ -560,7 +576,7 @@ def process_single_ayah_ffmpeg(args):
             add_log(f"text: skipped ({surah}:{ayah})")
 
         # Select background using rotator to prevent repetition
-        bg_path = get_next_background(bg_style, count=1)
+        bg_path = planned_background or get_next_background(bg_style, count=1)
         bg_paths = bg_path if isinstance(bg_path, list) else [bg_path]
         logging.debug(f"Segment {idx}: Using background {os.path.basename(bg_paths[0])}")
 
@@ -572,7 +588,10 @@ def process_single_ayah_ffmpeg(args):
             text_png_path=text_png_path, highlight=highlight,
             frame_size=frame_size, quality=quality,
             background_motion=background_motion,
-            motion_direction=1 if idx % 2 else -1,
+            motion_direction=motion_direction,
+            background_offset_sec=background_offset_sec,
+            motion_offset_sec=motion_offset_sec,
+            scene_duration_sec=scene_duration_sec,
         )
 
         logging.info(f"✅ Segment {idx} complete: ayah {surah}:{ayah}")

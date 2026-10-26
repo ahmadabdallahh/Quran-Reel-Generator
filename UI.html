@@ -238,6 +238,21 @@
                             </span>
                         </label>
                     </div>
+                    <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div>
+                            <label class="mb-2 block text-sm font-semibold text-ink/80" for="backgroundInterval">تغيير الخلفية بعد</label>
+                            <input id="backgroundInterval" type="number" min="1" max="120" value="15" inputmode="numeric"
+                                class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3 text-ink focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none" />
+                        </div>
+                        <div>
+                            <label class="mb-2 block text-sm font-semibold text-ink/80" for="backgroundIntervalUnit">وحدة المدة</label>
+                            <select id="backgroundIntervalUnit" class="sel w-full rounded-2xl border-2 border-gold/25 bg-white px-4 py-3 text-ink focus-visible:border-action focus-visible:ring-4 focus-visible:ring-action/20 focus-visible:outline-none">
+                                <option value="seconds" selected>ثانية (عند أقرب نهاية آية)</option>
+                                <option value="ayahs">آية</option>
+                            </select>
+                        </div>
+                    </div>
+                    <p class="mt-2 text-xs text-ink/60" id="backgroundIntervalHelp">تبقى اللقطة وحركتها مستمرتين خلال المدة المحددة، ثم تتغير عند حدّ آية.</p>
                 </fieldset>
 
                 <div>
@@ -378,7 +393,7 @@
     </main>
 
     <footer class="relative z-10 pb-7 text-center text-xs text-ink/60">
-        <span>الإصدار <span id="appVersion">0.6.0</span></span>
+        <span>الإصدار <span id="appVersion">0.7.0</span></span>
     </footer>
 
     <script src="main.js"></script>

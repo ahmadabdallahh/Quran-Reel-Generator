@@ -21,12 +21,15 @@ from quran_reels.services.text_overlay import resolve_profile
 from quran_reels.services.video_rendering import (
     _compute_xfade_pairs, _premerge_chunks, _split_into_chunks,
     _video_encoding_args, process_single_ayah_ffmpeg,
+    prepare_single_ayah_audio,
 )
 from quran_reels.services.audio import (
     estimate_ayah_duration as _estimate_ayah_duration,
     get_audio_duration_ffprobe,
 )
-from quran_reels.services.background import init_background_rotator
+from quran_reels.services.background import (
+    get_next_background, init_background_rotator,
+)
 from quran_reels.utils.job import current_job, start_new_job
 from quran_reels.utils.progress import (
     add_log, current_progress, update_progress,
@@ -329,17 +332,59 @@ def _prepare_render_config(reciter_id, surah, start_ayah, end_ayah, quality,
 def _build_ayah_args(job, reciter_id, surah, start_ayah, last_ayah, template,
                      bg_style, quality, reciter_speed, show_text,
                      highlight_words, text_position, frame_size,
-                     include_bismillah, background_motion='still'):
+                     include_bismillah, background_motion='still',
+                     background_interval=15, background_interval_unit='seconds'):
     """Create the stable, job-scoped worker arguments for each ayah."""
     if text_position not in TEXT_POSITIONS:
         text_position = TEXT_POSITION_DEFAULT
     total = last_ayah - start_ayah + 1
     # Ayah clips stay visually complete here; the concat stage applies the
     # selected boundary transition once, avoiding doubled fades to black.
+    audio_tasks = list(enumerate(range(start_ayah, last_ayah + 1), start=1))
+    with concurrent.futures.ThreadPoolExecutor(
+            max_workers=min(4, total)) as executor:
+        audio_assets = list(executor.map(
+            lambda item: prepare_single_ayah_audio(
+                job, reciter_id, surah, item[1], item[0], reciter_speed,
+            ),
+            audio_tasks,
+        ))
+    scenes = []
+    scene_start = 0
+    elapsed = 0.0
+    count = 0
+    for local_index, (_, duration) in enumerate(audio_assets):
+        elapsed += duration
+        count += 1
+        close_scene = (
+            count >= background_interval if background_interval_unit == 'ayahs'
+            else elapsed >= background_interval
+        )
+        if close_scene or local_index == total - 1:
+            scenes.append((scene_start, local_index + 1, elapsed))
+            scene_start = local_index + 1
+            elapsed = 0.0
+            count = 0
+
+    scene_for_ayah = {}
+    for scene_num, (first, after_last, scene_duration) in enumerate(scenes):
+        selected = get_next_background(bg_style, count=1)
+        selected = selected[0] if isinstance(selected, list) else selected
+        scene_offset = 0.0
+        for local_index in range(first, after_last):
+            scene_for_ayah[local_index] = (
+                selected, scene_offset, scene_duration,
+                1 if scene_num % 2 == 0 else -1,
+            )
+            scene_offset += audio_assets[local_index][1]
+
     return [
         (job, reciter_id, surah, ayah, index, template, bg_style, quality,
          reciter_speed, True, show_text, highlight_words,
-         text_position, frame_size, include_bismillah, background_motion)
+         text_position, frame_size, include_bismillah, background_motion,
+         audio_assets[index - 1][0], scene_for_ayah[index - 1][0],
+         scene_for_ayah[index - 1][1], scene_for_ayah[index - 1][1],
+         scene_for_ayah[index - 1][2], scene_for_ayah[index - 1][3])
         for index, ayah in enumerate(range(start_ayah, last_ayah + 1), start=1)
     ]
 
@@ -380,7 +425,8 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
                 show_text=SHOW_TEXT_DEFAULT,
                 highlight_words=HIGHLIGHT_WORDS_DEFAULT,
                 text_position=TEXT_POSITION_DEFAULT,
-                background_motion='still'):
+                background_motion='still', background_interval=15,
+                background_interval_unit='seconds'):
     """Main video builder.
 
     Downloads each ayah's recitation, muxes it onto a background video
@@ -445,6 +491,7 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
             job, reciter_id, surah, start_ayah, last_ayah, template, bg_style,
             quality, reciter_speed, show_text, highlight_words, text_position,
             frame_size, include_bismillah, background_motion,
+            background_interval, background_interval_unit,
         )
         temp_output_path, output_path = _build_output_paths(
             surah, start_ayah, last_ayah, quality, template, person_name,
