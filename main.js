@@ -490,7 +490,8 @@ generateBtn.addEventListener('click', async (e) => {
             return Number.isFinite(n) && n > 0 ? n : null;
         })(),
         reciterSpeed: parseFloat(document.getElementById('reciterSpeedInput').value) || 1.0,
-        transitionStyle: document.querySelector('input[name="transitionStyle"]:checked')?.value || 'crossfade'
+        transitionStyle: document.querySelector('input[name="transitionStyle"]:checked')?.value || 'crossfade',
+        backgroundMotion: document.querySelector('input[name="backgroundMotion"]:checked')?.value || 'still'
     };
 
     if (!Number.isInteger(payload.surah) || !Number.isInteger(payload.startAyah) ||
@@ -549,7 +550,8 @@ previewBtn.addEventListener('click', async () => {
         template: document.querySelector('input[name="template"]:checked')?.value || 'normal',
         showText: document.getElementById('showTextCheckbox').checked,
         highlightWords: document.getElementById('highlightWordsCheckbox').checked,
-        textPosition: document.getElementById('textPositionSelect').value
+        textPosition: document.getElementById('textPositionSelect').value,
+        backgroundMotion: document.querySelector('input[name="backgroundMotion"]:checked')?.value || 'still'
     };
 
     previewBtn.disabled = true;

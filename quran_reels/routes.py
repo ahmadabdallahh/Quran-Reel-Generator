@@ -7,7 +7,10 @@ from __future__ import annotations
 
 def _validated_api_payload():
     from flask import jsonify, request
-    from main import (OUTPUT_FORMATS, QUALITY_PRESETS, RECITERS_MAP, VERSE_COUNTS, get_available_templates)
+    from main import (
+        BACKGROUND_MOTIONS, OUTPUT_FORMATS, QUALITY_PRESETS, RECITERS_MAP,
+        VERSE_COUNTS, get_available_templates,
+    )
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         return None, (jsonify({'error': 'الطلب غير صالح؛ أرسل بيانات JSON صحيحة'}), 400)
@@ -42,6 +45,7 @@ def _validated_api_payload():
     format_type = data.get('format', 'reels')
     template = data.get('template', 'normal')
     transition_style = data.get('transitionStyle') or None
+    background_motion = data.get('backgroundMotion', 'still')
     if quality not in QUALITY_PRESETS:
         return None, (jsonify({'error': 'جودة الفيديو المختارة غير صالحة'}), 400)
     if format_type not in OUTPUT_FORMATS:
@@ -52,6 +56,8 @@ def _validated_api_payload():
             None, 'crossfade', 'fadeblack', 'cut',
             'cinematic', 'dynamic', 'smooth'):
         return None, (jsonify({'error': 'أسلوب الانتقال المختار غير صالح'}), 400)
+    if background_motion not in BACKGROUND_MOTIONS:
+        return None, (jsonify({'error': 'حركة الخلفية المختارة غير صالحة'}), 400)
 
     return {
         'data': data,
@@ -65,6 +71,7 @@ def _validated_api_payload():
         'format': format_type,
         'template': template,
         'transitionStyle': transition_style,
+        'backgroundMotion': background_motion,
     }, None
 
 
@@ -142,7 +149,8 @@ def generate_video():
         args=(reciter_id, surah, start_ayah, end_ayah, quality,
               format_type, template, person_name, target_duration_seconds,
               include_bismillah, reciter_speed, transition_style_override,
-              show_text, highlight_words, text_position),
+              show_text, highlight_words, text_position,
+              payload['backgroundMotion']),
         daemon=True
     )
     thread.start()
@@ -196,7 +204,8 @@ def preview_video():
     thread = threading.Thread(
         target=build_video,
         args=(reciter_id, surah, ayah, ayah, 'low', 'reels', template, '', None,
-              False, 1.0, None, show_text, highlight_words, text_position),
+              False, 1.0, None, show_text, highlight_words, text_position,
+              payload['backgroundMotion']),
         daemon=True
     )
     thread.start()

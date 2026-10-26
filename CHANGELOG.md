@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0 — 2026-10-26
+
+### Added
+
+- Added optional still, slow zoom-in, slow zoom-out, and alternating drift
+  movement for background footage.
+- Added live motion samples and kept the ayah text fixed above moving footage.
+
 ## 0.5.0 — 2026-10-26
 
 ### Added

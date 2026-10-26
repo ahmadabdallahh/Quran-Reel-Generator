@@ -329,7 +329,7 @@ def _prepare_render_config(reciter_id, surah, start_ayah, end_ayah, quality,
 def _build_ayah_args(job, reciter_id, surah, start_ayah, last_ayah, template,
                      bg_style, quality, reciter_speed, show_text,
                      highlight_words, text_position, frame_size,
-                     include_bismillah):
+                     include_bismillah, background_motion='still'):
     """Create the stable, job-scoped worker arguments for each ayah."""
     if text_position not in TEXT_POSITIONS:
         text_position = TEXT_POSITION_DEFAULT
@@ -339,7 +339,7 @@ def _build_ayah_args(job, reciter_id, surah, start_ayah, last_ayah, template,
     return [
         (job, reciter_id, surah, ayah, index, template, bg_style, quality,
          reciter_speed, True, show_text, highlight_words,
-         text_position, frame_size, include_bismillah)
+         text_position, frame_size, include_bismillah, background_motion)
         for index, ayah in enumerate(range(start_ayah, last_ayah + 1), start=1)
     ]
 
@@ -379,7 +379,8 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
                 transition_style_override=None,
                 show_text=SHOW_TEXT_DEFAULT,
                 highlight_words=HIGHLIGHT_WORDS_DEFAULT,
-                text_position=TEXT_POSITION_DEFAULT):
+                text_position=TEXT_POSITION_DEFAULT,
+                background_motion='still'):
     """Main video builder.
 
     Downloads each ayah's recitation, muxes it onto a background video
@@ -405,6 +406,8 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
       reciter_speed:     0.5..2.0; tempo multiplier applied via ffmpeg atempo.
       transition_style_override: Optional key of ``VIDEO_TRANSITIONS`` to
                                  override the template's default.
+      background_motion: Optional camera movement applied only to the
+                         background clip of each ayah.
 
     Returns:
         str | None: Absolute ``output_path`` of the final mp4 on success,
@@ -441,7 +444,7 @@ def build_video(reciter_id, surah, start_ayah, end_ayah=None,
         ayah_args = _build_ayah_args(
             job, reciter_id, surah, start_ayah, last_ayah, template, bg_style,
             quality, reciter_speed, show_text, highlight_words, text_position,
-            frame_size, include_bismillah,
+            frame_size, include_bismillah, background_motion,
         )
         temp_output_path, output_path = _build_output_paths(
             surah, start_ayah, last_ayah, quality, template, person_name,

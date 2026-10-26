@@ -11,7 +11,7 @@ A tool that builds vertical Quran recitation videos (Reels / Shorts / TikTok).
 You pick a reciter, a surah, and the ayahs — the app downloads the audio,
 renders the ayah text on screen, and merges everything over background video.
 
-**Current version: 0.5.0**
+**Current version: 0.6.0**
 
 **In 30 seconds:** form in → one MP4 out (`outputs/video/`).
 

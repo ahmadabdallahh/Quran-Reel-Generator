@@ -205,6 +205,41 @@
                     </div>
                 </fieldset>
 
+                <fieldset class="col-span-full animation-choice motion-choice">
+                    <legend class="mb-1 text-[0.95rem] font-semibold text-ink/80">حركة الخلفية</legend>
+                    <p class="mb-3 text-sm text-ink/70" id="backgroundMotionHelp">حركة بطيئة للمشهد فقط؛ نص الآية والتلاوة يبقيان ثابتين.</p>
+                    <div class="transition-grid" role="radiogroup" aria-describedby="backgroundMotionHelp">
+                        <label class="transition-option">
+                            <input type="radio" name="backgroundMotion" value="still" checked />
+                            <span class="transition-card">
+                                <span class="motion-preview motion-still" aria-hidden="true"><i></i></span>
+                                <span class="transition-copy"><strong>الفيديو الأصلي</strong><small>دون حركة إضافية</small></span>
+                            </span>
+                        </label>
+                        <label class="transition-option">
+                            <input type="radio" name="backgroundMotion" value="zoom_in" />
+                            <span class="transition-card">
+                                <span class="motion-preview motion-zoom-in" aria-hidden="true"><i></i></span>
+                                <span class="transition-copy"><strong>تقريب بطيء</strong><small>اقتراب هادئ داخل المشهد</small></span>
+                            </span>
+                        </label>
+                        <label class="transition-option">
+                            <input type="radio" name="backgroundMotion" value="zoom_out" />
+                            <span class="transition-card">
+                                <span class="motion-preview motion-zoom-out" aria-hidden="true"><i></i></span>
+                                <span class="transition-copy"><strong>ابتعاد بطيء</strong><small>اتساع تدريجي للمشهد</small></span>
+                            </span>
+                        </label>
+                        <label class="transition-option">
+                            <input type="radio" name="backgroundMotion" value="drift" />
+                            <span class="transition-card">
+                                <span class="motion-preview motion-drift" aria-hidden="true"><i></i></span>
+                                <span class="transition-copy"><strong>انجراف هادئ</strong><small>يتناوب اتجاهه مع كل آية</small></span>
+                            </span>
+                        </label>
+                    </div>
+                </fieldset>
+
                 <div>
                     <label class="block mb-2 text-[0.95rem] font-semibold text-ink/80" for="formatSelect">تنسيق
                         الفيديو</label>
@@ -343,7 +378,7 @@
     </main>
 
     <footer class="relative z-10 pb-7 text-center text-xs text-ink/60">
-        <span>الإصدار <span id="appVersion">0.5.0</span></span>
+        <span>الإصدار <span id="appVersion">0.6.0</span></span>
     </footer>
 
     <script src="main.js"></script>

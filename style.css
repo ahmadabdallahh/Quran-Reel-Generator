@@ -513,6 +513,8 @@ input:-webkit-autofill {
 }
 
 .animation-choice {
+    min-inline-size: 0;
+    margin: 0;
     padding: 16px 18px;
     border: 1px solid color-mix(in srgb, var(--color-gold) 24%, transparent);
     border-radius: 18px;
@@ -590,6 +592,79 @@ input:-webkit-autofill {
 
 .transition-preview i + i {
     background: linear-gradient(145deg, #bdad80, #78846d 58%, #3b5947);
+}
+
+.motion-preview {
+    position: relative;
+    display: block;
+    height: 42px;
+    overflow: hidden;
+    border-radius: 9px;
+    background: #c3d0b3;
+    isolation: isolate;
+}
+
+.motion-preview i {
+    position: absolute;
+    inset: -10%;
+    display: block;
+    background:
+        radial-gradient(circle at 74% 25%, var(--color-honey) 0 7%, transparent 7.8%),
+        linear-gradient(180deg, #bed0bc 0%, #d9d2a9 72%, #687b5c 73%);
+}
+
+.motion-preview i::before,
+.motion-preview i::after {
+    content: '';
+    position: absolute;
+    inset: 22% -2% 0;
+    background: #7b8d69;
+    clip-path: polygon(0 72%, 19% 35%, 38% 67%, 61% 24%, 81% 66%, 100% 36%, 100% 100%, 0 100%);
+}
+
+.motion-preview i::after {
+    inset: 45% -2% -3%;
+    background: #3e5945;
+    clip-path: polygon(0 34%, 24% 9%, 46% 43%, 70% 2%, 100% 38%, 100% 100%, 0 100%);
+}
+
+.motion-zoom-in i,
+.motion-zoom-out i,
+.motion-drift i {
+    animation: none;
+}
+
+.motion-choice .transition-option:has(input:checked) .motion-zoom-in i,
+.motion-choice .transition-option:hover .motion-zoom-in i,
+.motion-choice .transition-option:focus-within .motion-zoom-in i {
+    animation: sampleZoomIn 4.8s ease-in-out infinite alternate;
+}
+
+.motion-choice .transition-option:has(input:checked) .motion-zoom-out i,
+.motion-choice .transition-option:hover .motion-zoom-out i,
+.motion-choice .transition-option:focus-within .motion-zoom-out i {
+    animation: sampleZoomOut 4.8s ease-in-out infinite alternate;
+}
+
+.motion-choice .transition-option:has(input:checked) .motion-drift i,
+.motion-choice .transition-option:hover .motion-drift i,
+.motion-choice .transition-option:focus-within .motion-drift i {
+    animation: sampleDrift 5.2s ease-in-out infinite alternate;
+}
+
+@keyframes sampleZoomIn {
+    from { transform: scale(1.03); }
+    to { transform: scale(1.2); }
+}
+
+@keyframes sampleZoomOut {
+    from { transform: scale(1.2); }
+    to { transform: scale(1.03); }
+}
+
+@keyframes sampleDrift {
+    from { transform: translateX(3%) scale(1.14); }
+    to { transform: translateX(-3%) scale(1.14); }
 }
 
 .preview-crossfade i + i,
@@ -812,7 +887,8 @@ input:-webkit-autofill {
     }
 
     .transition-preview i + i,
-    .preview-fadeblack::after {
+    .preview-fadeblack::after,
+    .motion-preview i {
         animation: none;
     }
 

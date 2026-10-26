@@ -12,7 +12,8 @@ import shutil
 import subprocess
 
 from quran_reels.config import (
-    BISMILLAH_DURATION_SEC, QUALITY_PRESETS, SURAH_NAMES, TARGET_H, TARGET_W,
+    BACKGROUND_MOTIONS, BISMILLAH_DURATION_SEC, QUALITY_PRESETS, SURAH_NAMES,
+    TARGET_H, TARGET_W,
     should_show_bismillah_visual,
 )
 from quran_reels.services.audio import (
@@ -28,6 +29,49 @@ from quran_reels.utils.progress import (
 )
 
 HIGHLIGHT_MAX_LAYERS = 60
+
+
+def _background_motion_filter(motion, duration_sec, fps, frame_size,
+                              direction=1):
+    """Return a subtle zoompan filter for one ayah's background only."""
+    if motion not in BACKGROUND_MOTIONS or motion == 'still':
+        return None
+
+    frame_w, frame_h = frame_size
+    last_frame = max(1, round(duration_sec * fps) - 1)
+    progress = f"min(on/{last_frame},1)"
+    if motion == 'zoom_in':
+        zoom = f"1.02+0.06*{progress}"
+        x = "iw/2-iw/zoom/2"
+    elif motion == 'zoom_out':
+        zoom = f"1.08-0.06*{progress}"
+        x = "iw/2-iw/zoom/2"
+    else:  # Alternate the gentle horizontal drift direction on each ayah.
+        zoom = "1.08"
+        travel = progress if direction >= 0 else f"(1-{progress})"
+        x = f"(iw-iw/zoom)*{travel}"
+
+    y = "ih/2-ih/zoom/2"
+    return (
+        f"zoompan=z='{zoom}':x='{x}':y='{y}':d=1:"
+        f"s={frame_w}x{frame_h}:fps={fps}"
+    )
+
+
+def _background_video_chain(input_index, output_label, duration_sec, fps,
+                            frame_size, motion, direction=1):
+    chain = (
+        f"[{input_index}:v]trim=duration={duration_sec:.3f},"
+        "setpts=PTS-STARTPTS"
+    )
+    motion_filter = _background_motion_filter(
+        motion, duration_sec, fps, frame_size, direction,
+    )
+    if motion_filter:
+        chain += f",fps={fps},{motion_filter}"
+    else:
+        chain += f",fps={fps}"
+    return f"{chain}[{output_label}]"
 
 
 def _compute_xfade_pairs(transition_style, n, xfade_d):
@@ -143,7 +187,12 @@ def _video_encoding_args(quality_config):
     ]
 
 
-def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_last=True, ayah_num=None, surah_name=None, text_png_path=None, highlight=None, frame_size=(TARGET_W, TARGET_H), quality='medium'):
+def build_segment_ffmpeg(
+    bg_paths, audio_path, duration_sec, output_path, is_last=True,
+    ayah_num=None, surah_name=None, text_png_path=None, highlight=None,
+    frame_size=(TARGET_W, TARGET_H), quality='medium',
+    background_motion='still', motion_direction=1,
+):
     """Build one video segment with FFmpeg — background + audio, with optional ayah number watermark.
 
     Args:
@@ -166,6 +215,8 @@ def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_las
         ``enable='between(t,start,end)'`` — never one input per word.
         Requires ``text_png_path``; silently skipped (plain display
         fallback, FR-011) when boxes/windows are missing or mismatched.
+      background_motion: Optional subtle movement applied below text and
+        highlighting, so Quran overlays remain fixed and readable.
     """
     from main import FFMPEG_EXE
     if not os.path.exists(audio_path):
@@ -281,7 +332,10 @@ def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_las
         last_v = "vpre"
 
     if n == 1:
-        filt = f"[0:v]trim=duration={duration_sec},setpts=PTS-STARTPTS,fps={quality_config['fps']}[{last_v}]"
+        filt = _background_video_chain(
+            0, last_v, duration_sec, quality_config['fps'], frame_size,
+            background_motion, motion_direction,
+        )
         if text_idx is not None:
             # Text above background, below outro fade — fade eases the
             # composite so text and video leave together.
@@ -309,7 +363,11 @@ def build_segment_ffmpeg(bg_paths, audio_path, duration_sec, output_path, is_las
     else:
         v_parts = ""
         for i in range(n):
-            v_parts += f"[{i}:v]trim=duration={part_dur},setpts=PTS-STARTPTS,fps={quality_config['fps']}[v{i}];"
+            v_parts += _background_video_chain(
+                i, f"v{i}", part_dur, quality_config['fps'], frame_size,
+                background_motion,
+                motion_direction if i % 2 == 0 else -motion_direction,
+            ) + ";"
         v_parts += "".join([f"[v{i}]" for i in range(n)]) + f"concat=n={n}:v=1:a=0[bg];"
         filt = v_parts + f"[bg]null[{last_v}]"
         if text_idx is not None:
@@ -387,7 +445,7 @@ def process_single_ayah_ffmpeg(args):
     from main import FFMPEG_EXE
     (job, reciter_id, surah, ayah, idx, template, bg_style, quality,
      reciter_speed, is_last, show_text, highlight_words,
-     text_position, frame_size, include_bismillah) = args
+     text_position, frame_size, include_bismillah, background_motion) = args
 
     # Bind the parent build's JobContext to this worker thread so any
     # nested call to ``current_job()`` (e.g. inside ``download_audio``)
@@ -508,7 +566,14 @@ def process_single_ayah_ffmpeg(args):
 
         segment_out = current_job().segment_path(idx)
         ayah_num = f"{surah}:{ayah}"
-        build_segment_ffmpeg(bg_paths, audio_path, duration, segment_out, is_last=is_last, ayah_num=ayah_num, surah_name=SURAH_NAMES[surah-1], text_png_path=text_png_path, highlight=highlight, frame_size=frame_size, quality=quality)
+        build_segment_ffmpeg(
+            bg_paths, audio_path, duration, segment_out, is_last=is_last,
+            ayah_num=ayah_num, surah_name=SURAH_NAMES[surah - 1],
+            text_png_path=text_png_path, highlight=highlight,
+            frame_size=frame_size, quality=quality,
+            background_motion=background_motion,
+            motion_direction=1 if idx % 2 else -1,
+        )
 
         logging.info(f"✅ Segment {idx} complete: ayah {surah}:{ayah}")
         return (ayah, segment_out)

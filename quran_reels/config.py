@@ -146,6 +146,9 @@ TEMPLATE_LABELS = {
 
 BACKGROUND_VIDEO_EXTENSIONS = ('.mp4', '.mov')
 
+# Optional camera movement applied to the background layer of each ayah.
+BACKGROUND_MOTIONS = ('still', 'zoom_in', 'zoom_out', 'drift')
+
 # =============================================================================
 # Video transitions between ayahs. These affect video only; the recitation
 # audio remains concatenated at its original duration.
